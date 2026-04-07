@@ -62,9 +62,20 @@ export default function Dashboard() {
   }))
 
   const bookData = Object.entries(stats.by_book || {})
-    .sort((a, b) => b[1] - a[1])
+    .map(([book, d]) => {
+      // support both old format (number) and new format (object with difficulty counts)
+      const isNew = d && typeof d === 'object'
+      return {
+        book: book.replace(/^The /, ''),
+        _total: isNew ? d.total : (d || 0),
+        NEW_WORD: isNew ? (d.NEW_WORD || 0) : 0,
+        EASY:     isNew ? (d.EASY     || 0) : 0,
+        MEDIUM:   isNew ? (d.MEDIUM   || 0) : 0,
+        HARD:     isNew ? (d.HARD     || 0) : 0,
+      }
+    })
+    .sort((a, b) => b._total - a._total)
     .slice(0, 10)
-    .map(([book, count]) => ({ book: book.replace('The ', ''), count }))
 
   const mastered =
     (stats.by_difficulty?.EASY || 0) + (stats.by_difficulty?.MEDIUM || 0)
@@ -152,7 +163,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Bar chart: top books */}
+        {/* Bar chart: top books stacked by difficulty */}
         <div className="card">
           <h2 className="text-base font-semibold text-slate-200 mb-4">Words per Book (Top 10)</h2>
           <div className="h-64">
@@ -172,9 +183,13 @@ export default function Dashboard() {
                   cursor={{ fill: '#2a2d3e' }}
                   contentStyle={{ background: '#1a1d27', border: '1px solid #2a2d3e', borderRadius: 8 }}
                   labelStyle={{ color: '#e2e8f0' }}
-                  itemStyle={{ color: '#818cf8' }}
+                  itemStyle={{ color: '#94a3b8' }}
+                  formatter={(value, name) => [value, DIFF_LABELS[name] || name]}
                 />
-                <Bar dataKey="count" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="NEW_WORD" stackId="a" fill={DIFF_COLORS.NEW_WORD} name="NEW_WORD" />
+                <Bar dataKey="EASY"     stackId="a" fill={DIFF_COLORS.EASY}     name="EASY" />
+                <Bar dataKey="MEDIUM"   stackId="a" fill={DIFF_COLORS.MEDIUM}   name="MEDIUM" />
+                <Bar dataKey="HARD"     stackId="a" fill={DIFF_COLORS.HARD}     name="HARD" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

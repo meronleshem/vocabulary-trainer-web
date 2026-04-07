@@ -332,11 +332,20 @@ def get_stats():
     cur.execute("SELECT difficulty, COUNT(*) FROM vocabulary GROUP BY difficulty")
     by_difficulty = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute("SELECT group_name, COUNT(*) FROM vocabulary GROUP BY group_name")
+    cur.execute(
+        "SELECT group_name, difficulty, COUNT(*) AS cnt FROM vocabulary GROUP BY group_name, difficulty"
+    )
     by_book: dict = {}
-    for gname, cnt in cur.fetchall():
-        book = extract_book(gname)
-        by_book[book] = by_book.get(book, 0) + cnt
+    for row in cur.fetchall():
+        gname = row["group_name"]
+        diff  = row["difficulty"]
+        cnt   = row["cnt"]
+        book  = extract_book(gname)
+        if book not in by_book:
+            by_book[book] = {"total": 0, "NEW_WORD": 0, "EASY": 0, "MEDIUM": 0, "HARD": 0}
+        by_book[book]["total"] += cnt
+        if diff in by_book[book]:
+            by_book[book][diff] += cnt
 
     cur.execute("SELECT * FROM vocabulary ORDER BY id DESC LIMIT 6")
     recent = [dict(r) for r in cur.fetchall()]
