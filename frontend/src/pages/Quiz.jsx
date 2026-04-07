@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight } from 'lucide-react'
-import { getQuiz, getGroups } from '../api/client'
+import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
+import { getQuiz, getGroups, patchDifficulty } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
 
 const RESULT_COLORS = {
@@ -8,6 +8,27 @@ const RESULT_COLORS = {
   wrong: 'bg-red-500/20 border-red-500/50 text-red-300',
   unanswered: 'bg-primary/10 border-primary/30 text-primary-light',
   default: 'bg-dark-500 border-dark-400 text-slate-300 hover:border-primary/40 hover:bg-dark-400',
+}
+
+const DIFF_BG_CARD = {
+  NEW_WORD: 'border-violet-500/40 bg-violet-900/10',
+  EASY: 'border-emerald-500/40 bg-emerald-900/10',
+  MEDIUM: 'border-amber-500/40 bg-amber-900/10',
+  HARD: 'border-red-500/40 bg-red-900/10',
+}
+
+const DIFF_BUTTONS = [
+  { key: 'EASY', label: 'Easy', cls: 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/20' },
+  { key: 'MEDIUM', label: 'Medium', cls: 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/30 border border-amber-500/20' },
+  { key: 'HARD', label: 'Hard', cls: 'bg-red-500/15 text-red-400 hover:bg-red-500/30 border border-red-500/20' },
+]
+
+const speak = (text, lang = 'en-US') => {
+  if (!window.speechSynthesis) return
+  window.speechSynthesis.cancel()
+  const utt = new SpeechSynthesisUtterance(text)
+  utt.lang = lang
+  window.speechSynthesis.speak(utt)
 }
 
 export default function Quiz() {
@@ -26,10 +47,19 @@ export default function Quiz() {
     direction: 'eng_to_heb',
   })
   const [history, setHistory] = useState([]) // {correct: bool, word: obj}
+  const [markedDiff, setMarkedDiff] = useState({}) // word id -> difficulty set during quiz
 
   useEffect(() => {
     getGroups().then((r) => setGroups(r.data))
   }, [])
+
+  // TTS: speak question when a new question appears
+  useEffect(() => {
+    if (phase !== 'quiz' || !questions.length) return
+    const q = questions[qIdx]
+    const lang = settings.direction === 'eng_to_heb' ? 'en-US' : 'he-IL'
+    speak(q.question, lang)
+  }, [qIdx, phase, questions])
 
   const startQuiz = useCallback(async () => {
     setLoading(true)
@@ -46,6 +76,7 @@ export default function Quiz() {
       setAnswered(false)
       setScore(0)
       setHistory([])
+      setMarkedDiff({})
       setPhase('quiz')
     } finally {
       setLoading(false)
@@ -59,6 +90,12 @@ export default function Quiz() {
     const correct = option === questions[qIdx].correct
     if (correct) setScore((s) => s + 1)
     setHistory((h) => [...h, { correct, word: questions[qIdx].word, chosen: option }])
+  }
+
+  const handleDifficultyChange = async (diff) => {
+    const q = questions[qIdx]
+    setMarkedDiff((m) => ({ ...m, [q.word.id]: diff }))
+    await patchDifficulty(q.word.id, diff)
   }
 
   const goNext = () => {
@@ -231,6 +268,9 @@ export default function Quiz() {
   // ── Quiz ───────────────────────────────────────────────────────────────────
   const q = questions[qIdx]
   const progress = Math.round((qIdx / questions.length) * 100)
+  const wordDifficulty = markedDiff[q.word.id] || q.word.difficulty || 'NEW_WORD'
+  const cardBg = DIFF_BG_CARD[wordDifficulty] || DIFF_BG_CARD.NEW_WORD
+  const ttsLang = settings.direction === 'eng_to_heb' ? 'en-US' : 'he-IL'
 
   return (
     <div className="max-w-2xl mx-auto space-y-5 animate-fade-in">
@@ -254,13 +294,22 @@ export default function Quiz() {
       </div>
 
       {/* Question */}
-      <div className="card text-center py-10">
+      <div className={`card text-center py-10 border-2 transition-colors ${cardBg}`}>
         <p className="text-xs text-slate-600 mb-2 uppercase tracking-wider">
           {settings.direction === 'eng_to_heb' ? 'What is the Hebrew for:' : 'What is the English for:'}
         </p>
-        <p className={`text-3xl font-bold text-slate-100 ${settings.direction === 'heb_to_eng' ? 'heb' : ''}`}>
-          {q.question}
-        </p>
+        <div className="flex items-center justify-center gap-3">
+          <p className={`text-3xl font-bold text-slate-100 ${settings.direction === 'heb_to_eng' ? 'heb' : ''}`}>
+            {q.question}
+          </p>
+          <button
+            onClick={() => speak(q.question, ttsLang)}
+            className="text-slate-600 hover:text-slate-300 transition-colors flex-shrink-0"
+            title="Hear pronunciation"
+          >
+            <Volume2 size={20} />
+          </button>
+        </div>
         {q.word.group_name && (
           <p className="text-slate-600 text-xs mt-3">{q.word.group_name.replace(/_/g, ' ')}</p>
         )}
@@ -282,19 +331,39 @@ export default function Quiz() {
         ))}
       </div>
 
-      {/* Feedback + Next */}
+      {/* Feedback + Difficulty + Next */}
       {answered && (
-        <div className="flex items-center justify-between animate-slide-up">
-          <div className="flex items-center gap-2">
-            {selected === q.correct
-              ? <><CheckCircle size={18} className="text-emerald-400" /><span className="text-emerald-400 font-medium">Correct!</span></>
-              : <><XCircle size={18} className="text-red-400" /><span className="text-red-400 font-medium">Incorrect</span></>
-            }
+        <div className="space-y-3 animate-slide-up">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {selected === q.correct
+                ? <><CheckCircle size={18} className="text-emerald-400" /><span className="text-emerald-400 font-medium">Correct!</span></>
+                : <><XCircle size={18} className="text-red-400" /><span className="text-red-400 font-medium">Incorrect</span></>
+              }
+            </div>
+            <button className="btn-primary flex items-center gap-2" onClick={goNext}>
+              {qIdx + 1 >= questions.length ? 'See Results' : 'Next'}
+              <ArrowRight size={16} />
+            </button>
           </div>
-          <button className="btn-primary flex items-center gap-2" onClick={goNext}>
-            {qIdx + 1 >= questions.length ? 'See Results' : 'Next'}
-            <ArrowRight size={16} />
-          </button>
+
+          {/* Difficulty change */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Mark difficulty:</span>
+            <div className="flex gap-2">
+              {DIFF_BUTTONS.map((b) => (
+                <button
+                  key={b.key}
+                  className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${b.cls} ${
+                    wordDifficulty === b.key ? 'ring-2 ring-offset-1 ring-offset-dark-600 ring-current' : ''
+                  }`}
+                  onClick={() => handleDifficultyChange(b.key)}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

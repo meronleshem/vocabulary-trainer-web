@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   RefreshCw, ChevronLeft, ChevronRight, RotateCcw,
-  Eye, EyeOff, CheckCircle, Settings,
+  CheckCircle, Volume2,
 } from 'lucide-react'
 import { getStudyWords, patchDifficulty, getGroups } from '../api/client'
 import DifficultyBadge, { DIFF_LABELS } from '../components/DifficultyBadge'
@@ -12,12 +12,26 @@ const DIFF_BUTTONS = [
   { key: 'HARD', label: 'Hard', cls: 'bg-red-500/15 text-red-400 hover:bg-red-500/30 border border-red-500/20' },
 ]
 
+const DIFF_BG_CARD = {
+  NEW_WORD: 'border-violet-500/40 bg-violet-900/10',
+  EASY: 'border-emerald-500/40 bg-emerald-900/10',
+  MEDIUM: 'border-amber-500/40 bg-amber-900/10',
+  HARD: 'border-red-500/40 bg-red-900/10',
+}
+
+const speak = (text, lang = 'en-US') => {
+  if (!window.speechSynthesis) return
+  window.speechSynthesis.cancel()
+  const utt = new SpeechSynthesisUtterance(text)
+  utt.lang = lang
+  window.speechSynthesis.speak(utt)
+}
+
 export default function Study() {
   const [groups, setGroups] = useState([])
   const [words, setWords] = useState([])
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
-  const [showHeb, setShowHeb] = useState(false) // show heb on front or eng
   const [settings, setSettings] = useState({
     difficulty: '',
     group_name: '',
@@ -32,6 +46,12 @@ export default function Study() {
   useEffect(() => {
     getGroups().then((r) => setGroups(r.data))
   }, [])
+
+  // TTS: speak English word when a new card appears
+  useEffect(() => {
+    if (!session || !current) return
+    speak(current.engWord, 'en-US')
+  }, [idx, session])
 
   const start = useCallback(async () => {
     setLoading(true)
@@ -210,6 +230,9 @@ export default function Study() {
   }
 
   // Study card
+  const cardDiff = marked[current.id] || current.difficulty || 'NEW_WORD'
+  const cardBg = DIFF_BG_CARD[cardDiff] || DIFF_BG_CARD.NEW_WORD
+
   return (
     <div className="max-w-2xl mx-auto space-y-5 animate-fade-in">
       {/* Top bar */}
@@ -241,16 +264,23 @@ export default function Study() {
 
       {/* Card */}
       <div
-        className="card min-h-64 flex flex-col items-center justify-center text-center cursor-pointer select-none
-          hover:border-primary/40 transition-colors border-2 border-dark-400 relative"
+        className={`card min-h-64 flex flex-col items-center justify-center text-center cursor-pointer select-none
+          transition-colors border-2 relative ${cardBg}`}
         onClick={() => setFlipped((f) => !f)}
       >
         {/* Marked badge */}
-        {marked[current.id] && (
-          <div className="absolute top-4 right-4">
-            <DifficultyBadge difficulty={marked[current.id]} />
-          </div>
-        )}
+        <div className="absolute top-4 right-4">
+          <DifficultyBadge difficulty={marked[current.id] || current.difficulty} />
+        </div>
+
+        {/* Speaker button */}
+        <button
+          className="absolute top-4 left-4 text-slate-600 hover:text-slate-300 transition-colors"
+          onClick={(e) => { e.stopPropagation(); speak(current.engWord, 'en-US') }}
+          title="Hear pronunciation"
+        >
+          <Volume2 size={18} />
+        </button>
 
         {!flipped ? (
           <div className="space-y-3 px-4 animate-fade-in">
