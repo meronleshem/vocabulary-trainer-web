@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, Search, ChevronUp, ChevronDown, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
-import { getWords, deleteWord, getGroups, patchDifficulty } from '../api/client'
+import { getWords, deleteWord, getGroups, getBooks, patchDifficulty } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
 import WordModal from '../components/WordModal'
+import { GroupPickerDropdown } from '../components/GroupPicker'
 
 const DIFFICULTIES = ['', 'NEW_WORD', 'EASY', 'MEDIUM', 'HARD']
 
@@ -19,6 +20,7 @@ export default function Browse() {
   const [data, setData] = useState({ words: [], total: 0 })
   const [loading, setLoading] = useState(false)
   const [groups, setGroups] = useState([])
+  const [books, setBooks] = useState([])
 
   // Filters — seed groupName from ?group= query param (from Books page)
   const [search, setSearch] = useState('')
@@ -61,6 +63,7 @@ export default function Browse() {
 
   useEffect(() => {
     getGroups().then((r) => setGroups(r.data))
+    getBooks().then((r) => setBooks(r.data))
   }, [])
 
   const handleSearchChange = (val) => {
@@ -130,18 +133,11 @@ export default function Browse() {
             <option key={d} value={d}>{DIFF_LABELS[d] || d}</option>
           ))}
         </select>
-        <select
-          className="input w-52"
+        <GroupPickerDropdown
+          books={books}
           value={groupName}
-          onChange={(e) => { setGroupName(e.target.value); setPage(1) }}
-        >
-          <option value="">All groups</option>
-          {groups.map((g) => (
-            <option key={g.group_name} value={g.group_name}>
-              {(g.group_name || 'Uncategorized').replace(/_/g, ' ')} ({g.count})
-            </option>
-          ))}
-        </select>
+          onChange={(val) => { setGroupName(val); setPage(1) }}
+        />
       </div>
 
       {/* Table */}
