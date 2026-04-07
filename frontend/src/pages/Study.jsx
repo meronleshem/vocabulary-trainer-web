@@ -3,8 +3,9 @@ import {
   RefreshCw, ChevronLeft, ChevronRight, RotateCcw,
   CheckCircle, Volume2,
 } from 'lucide-react'
-import { getStudyWords, patchDifficulty, getGroups } from '../api/client'
+import { getStudyWords, patchDifficulty, getBooks } from '../api/client'
 import DifficultyBadge, { DIFF_LABELS } from '../components/DifficultyBadge'
+import GroupPicker from '../components/GroupPicker'
 
 const DIFF_BUTTONS = [
   { key: 'EASY', label: 'Easy', cls: 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/20' },
@@ -28,7 +29,7 @@ const speak = (text, lang = 'en-US') => {
 }
 
 export default function Study() {
-  const [groups, setGroups] = useState([])
+  const [books, setBooks] = useState([])
   const [words, setWords] = useState([])
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -44,7 +45,7 @@ export default function Study() {
   const [marked, setMarked] = useState({}) // id -> difficulty
 
   useEffect(() => {
-    getGroups().then((r) => setGroups(r.data))
+    getBooks().then((r) => setBooks(r.data))
   }, [])
 
   // TTS: speak English word when a new card appears
@@ -139,18 +140,11 @@ export default function Study() {
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Group Filter</label>
-            <select
-              className="input"
+            <GroupPicker
+              books={books}
               value={settings.group_name}
-              onChange={(e) => setSettings((s) => ({ ...s, group_name: e.target.value }))}
-            >
-              <option value="">All groups</option>
-              {groups.map((g) => (
-                <option key={g.group_name} value={g.group_name}>
-                  {(g.group_name || 'Uncategorized').replace(/_/g, ' ')} ({g.count})
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setSettings((s) => ({ ...s, group_name: val }))}
+            />
           </div>
 
           <div>

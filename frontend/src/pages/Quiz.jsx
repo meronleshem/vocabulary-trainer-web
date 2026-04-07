@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
-import { getQuiz, getGroups, patchDifficulty } from '../api/client'
+import { getQuiz, getBooks, patchDifficulty } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
+import GroupPicker from '../components/GroupPicker'
 
 const RESULT_COLORS = {
   correct: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
@@ -32,7 +33,7 @@ const speak = (text, lang = 'en-US') => {
 }
 
 export default function Quiz() {
-  const [groups, setGroups] = useState([])
+  const [books, setBooks] = useState([])
   const [questions, setQuestions] = useState([])
   const [qIdx, setQIdx] = useState(0)
   const [selected, setSelected] = useState(null)
@@ -50,7 +51,7 @@ export default function Quiz() {
   const [markedDiff, setMarkedDiff] = useState({}) // word id -> difficulty set during quiz
 
   useEffect(() => {
-    getGroups().then((r) => setGroups(r.data))
+    getBooks().then((r) => setBooks(r.data))
   }, [])
 
   // TTS: speak question when a new question appears
@@ -169,18 +170,11 @@ export default function Quiz() {
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Group</label>
-            <select
-              className="input"
+            <GroupPicker
+              books={books}
               value={settings.group_name}
-              onChange={(e) => setSettings((s) => ({ ...s, group_name: e.target.value }))}
-            >
-              <option value="">All groups</option>
-              {groups.map((g) => (
-                <option key={g.group_name} value={g.group_name}>
-                  {(g.group_name || 'Uncategorized').replace(/_/g, ' ')} ({g.count})
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setSettings((s) => ({ ...s, group_name: val }))}
+            />
           </div>
 
           <div>

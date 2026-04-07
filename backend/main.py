@@ -34,6 +34,17 @@ def extract_book(group_name: str) -> str:
     return name if name else "Uncategorized"
 
 
+def natural_sort_key(group_name: str):
+    """Sort key that treats trailing numbers numerically, e.g. 'book 2' < 'book 10'."""
+    if not group_name:
+        return ("", 0)
+    name = group_name.replace("_", " ").strip()
+    m = re.search(r"(\d+)$", name)
+    if m:
+        return (name[: m.start()].strip().lower(), int(m.group()))
+    return (name.lower(), 0)
+
+
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
 class WordCreate(BaseModel):
@@ -276,10 +287,11 @@ def list_groups():
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        "SELECT group_name, COUNT(*) as count FROM vocabulary GROUP BY group_name ORDER BY group_name"
+        "SELECT group_name, COUNT(*) as count FROM vocabulary GROUP BY group_name"
     )
     rows = [{"group_name": r["group_name"], "count": r["count"]} for r in cur.fetchall()]
     conn.close()
+    rows.sort(key=lambda r: natural_sort_key(r["group_name"]))
     return rows
 
 
@@ -302,7 +314,11 @@ def list_books():
         books[book]["total"] += row["count"]
         books[book]["groups"].append({"group_name": gname, "count": row["count"]})
 
-    return sorted(books.values(), key=lambda b: b["book"])
+    # Sort groups within each book by natural number order
+    for b in books.values():
+        b["groups"].sort(key=lambda g: natural_sort_key(g["group_name"]))
+
+    return sorted(books.values(), key=lambda b: b["book"].lower())
 
 
 @app.get("/api/stats")
