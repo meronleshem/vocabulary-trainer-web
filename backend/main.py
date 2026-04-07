@@ -53,6 +53,7 @@ class WordCreate(BaseModel):
     examples: Optional[str] = ""
     difficulty: str = "NEW_WORD"
     group_name: Optional[str] = ""
+    image_url: Optional[str] = ""
 
 
 class WordUpdate(BaseModel):
@@ -61,6 +62,7 @@ class WordUpdate(BaseModel):
     examples: Optional[str] = None
     difficulty: Optional[str] = None
     group_name: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class DifficultyUpdate(BaseModel):
@@ -215,8 +217,8 @@ def create_word(word: WordCreate):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO vocabulary (engWord, hebWord, examples, difficulty, group_name) VALUES (?,?,?,?,?)",
-        (word.engWord, word.hebWord, word.examples or "", word.difficulty, word.group_name or ""),
+        "INSERT INTO vocabulary (engWord, hebWord, examples, difficulty, group_name, image_url) VALUES (?,?,?,?,?,?)",
+        (word.engWord, word.hebWord, word.examples or "", word.difficulty, word.group_name or "", word.image_url or ""),
     )
     conn.commit()
     cur.execute("SELECT * FROM vocabulary WHERE id = ?", (cur.lastrowid,))

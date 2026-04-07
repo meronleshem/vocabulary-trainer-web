@@ -277,17 +277,33 @@ export default function Study() {
         </button>
 
         {!flipped ? (
-          <div className="space-y-3 px-4 animate-fade-in">
+          <div className="space-y-3 px-4 animate-fade-in flex flex-col items-center">
+            {current.image_url && (
+              <img
+                src={current.image_url}
+                alt={current.engWord}
+                className="w-32 h-32 object-cover rounded-xl border border-dark-400 mb-1"
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+            )}
             <p className="text-3xl font-bold text-slate-100">{current.engWord}</p>
             <p className="text-slate-600 text-sm">{(current.group_name || '').replace(/_/g, ' ')}</p>
-            <p className="text-slate-600 text-xs mt-6">Click to reveal →</p>
+            <p className="text-slate-600 text-xs mt-4">Click to reveal →</p>
           </div>
         ) : (
-          <div className="space-y-4 px-4 animate-flip-in">
+          <div className="space-y-4 px-4 animate-flip-in flex flex-col items-center">
+            {current.image_url && (
+              <img
+                src={current.image_url}
+                alt={current.engWord}
+                className="w-28 h-28 object-cover rounded-xl border border-dark-400 mb-1"
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+            )}
             <p className="text-slate-400 text-sm">{current.engWord}</p>
             <p className="text-2xl font-bold text-slate-100 heb">{current.hebWord}</p>
             {settings.showExamples && current.examples && (
-              <div className="mt-4 max-w-md text-left">
+              <div className="mt-2 max-w-md text-left">
                 {current.examples.split('\n').slice(0, 2).map((ex, i) => (
                   <p key={i} className="text-slate-500 text-sm italic mb-1">"{ex}"</p>
                 ))}

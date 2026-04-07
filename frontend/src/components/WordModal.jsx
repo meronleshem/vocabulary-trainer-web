@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Image } from 'lucide-react'
 import { createWord, updateWord } from '../api/client'
 
 const DIFFICULTIES = ['NEW_WORD', 'EASY', 'MEDIUM', 'HARD']
@@ -10,6 +10,7 @@ const EMPTY = {
   examples: '',
   difficulty: 'NEW_WORD',
   group_name: '',
+  image_url: '',
 }
 
 export default function WordModal({ word, groups, onClose, onSaved }) {
@@ -17,6 +18,7 @@ export default function WordModal({ word, groups, onClose, onSaved }) {
   const [form, setForm] = useState(EMPTY)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [imgError, setImgError] = useState(false)
 
   useEffect(() => {
     if (word) {
@@ -26,13 +28,18 @@ export default function WordModal({ word, groups, onClose, onSaved }) {
         examples: word.examples || '',
         difficulty: word.difficulty || 'NEW_WORD',
         group_name: word.group_name || '',
+        image_url: word.image_url || '',
       })
     } else {
       setForm(EMPTY)
     }
+    setImgError(false)
   }, [word])
 
-  const set = (key, val) => setForm((f) => ({ ...f, [key]: val }))
+  const set = (key, val) => {
+    if (key === 'image_url') setImgError(false)
+    setForm((f) => ({ ...f, [key]: val }))
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -141,6 +148,34 @@ export default function WordModal({ word, groups, onClose, onSaved }) {
                 ))}
               </datalist>
             </div>
+          </div>
+
+          {/* Image URL */}
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Image URL</label>
+            <div className="flex gap-3 items-start">
+              <input
+                className="input flex-1"
+                value={form.image_url}
+                onChange={(e) => set('image_url', e.target.value)}
+                placeholder="https://…"
+              />
+              {form.image_url && !imgError ? (
+                <img
+                  src={form.image_url}
+                  alt="preview"
+                  onError={() => setImgError(true)}
+                  className="w-14 h-14 rounded-lg object-cover border border-dark-400 flex-shrink-0"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-lg border border-dark-400 flex items-center justify-center flex-shrink-0 bg-dark-500">
+                  <Image size={20} className="text-slate-600" />
+                </div>
+              )}
+            </div>
+            {imgError && (
+              <p className="text-amber-400 text-xs mt-1">Could not load image preview.</p>
+            )}
           </div>
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
