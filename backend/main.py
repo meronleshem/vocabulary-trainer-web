@@ -43,14 +43,40 @@ def _scrape_morfix(eng_word: str) -> dict:
 
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    heb_div = soup.find("div", class_="normal_translation_div")
-    heb_word = heb_div.text.strip() if heb_div else ""
+    # Each part-of-speech block lives in a Translation_content_enTohe div.
+    # Inside it: Translation_divTop_enTohe (contains the POS label)
+    #            translation_bottom_container > Translation_divMiddle_enTohe > normal_translation_div
+    heb_parts = []
+    content_blocks = soup.find_all("div", class_="Translation_content_enTohe")
+    for block in content_blocks:
+        # Extract POS label (e.g. "verb", "noun")
+        top = block.find("div", class_="Translation_divTop_enTohe")
+        pos = ""
+        if top:
+            # The POS text is mixed with other text; grab only the first word after the eng word
+            top_text = top.get_text(separator=" ", strip=True)
+            # Format: "wane verb Save Add to…" — take the token right after the eng word
+            tokens = top_text.split()
+            for tok in tokens:
+                if tok.lower() in ("verb", "noun", "adjective", "adverb", "preposition", "pronoun", "conjunction"):
+                    pos = tok.lower()
+                    break
 
-    examples_ul = soup.find("ul", class_="Translation_ulFooter_enTohe")
+        trans_div = block.find("div", class_="normal_translation_div")
+        if trans_div:
+            trans = trans_div.get_text(strip=True)
+            if trans:
+                heb_parts.append(f"({pos}) {trans}" if pos else trans)
+
+    heb_word = " | ".join(heb_parts)
+
+    # Examples — take from the first block that has them
     examples = ""
-    if examples_ul:
-        items = examples_ul.find_all("li")[:3]
-        examples = "\n".join(li.get_text(strip=True) for li in items)
+    for ul in soup.find_all("ul", class_="Translation_ulFooter_enTohe"):
+        items = ul.find_all("li")[:3]
+        if items:
+            examples = "\n".join(li.get_text(strip=True) for li in items)
+            break
 
     return {"hebWord": heb_word, "examples": examples}
 
