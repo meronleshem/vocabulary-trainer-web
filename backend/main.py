@@ -275,11 +275,19 @@ def create_word(word: WordCreate):
     valid_diffs = {"EASY", "MEDIUM", "HARD", "NEW_WORD"}
     if word.difficulty not in valid_diffs:
         raise HTTPException(400, "Invalid difficulty")
+
+    eng_lower = word.engWord.strip().lower()
+
     conn = get_db()
     cur = conn.cursor()
+    cur.execute("SELECT id FROM vocabulary WHERE LOWER(engWord) = ?", (eng_lower,))
+    if cur.fetchone():
+        conn.close()
+        raise HTTPException(409, f'"{eng_lower}" already exists in the database.')
+
     cur.execute(
         "INSERT INTO vocabulary (engWord, hebWord, examples, difficulty, group_name, image_url) VALUES (?,?,?,?,?,?)",
-        (word.engWord, word.hebWord, word.examples or "", word.difficulty, word.group_name or "", word.image_url or ""),
+        (eng_lower, word.hebWord, word.examples or "", word.difficulty, word.group_name or "", word.image_url or ""),
     )
     conn.commit()
     cur.execute("SELECT * FROM vocabulary WHERE id = ?", (cur.lastrowid,))

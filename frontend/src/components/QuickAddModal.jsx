@@ -7,7 +7,7 @@ const DEFAULT_GROUP = 'New Words'
 export default function QuickAddModal({ books, onClose, onSaved }) {
   const [engWord, setEngWord] = useState('')
   const [groupName, setGroupName] = useState('')
-  const [state, setState] = useState('idle') // idle | loading | error
+  const [state, setState] = useState('idle') // idle | loading | error | duplicate
   const [error, setError] = useState('')
   const [lastSaved, setLastSaved] = useState('')
   const inputRef = useRef(null)
@@ -50,8 +50,9 @@ export default function QuickAddModal({ books, onClose, onSaved }) {
       onSaved?.()
       inputRef.current?.focus()
     } catch (err) {
-      setState('error')
-      setError(err.response?.data?.detail || 'Could not reach the translation service.')
+      const msg = err.response?.data?.detail || 'Could not reach the translation service.'
+      setState(err.response?.status === 409 ? 'duplicate' : 'error')
+      setError(msg)
     }
   }
 
@@ -75,7 +76,7 @@ export default function QuickAddModal({ books, onClose, onSaved }) {
               className="input"
               placeholder="e.g. remorse"
               value={engWord}
-              onChange={(e) => { setEngWord(e.target.value); setState('idle'); setError('') }}
+              onChange={(e) => { setEngWord(e.target.value); if (state !== 'idle') { setState('idle'); setError('') } }}
               disabled={state === 'loading'}
             />
           </div>
@@ -106,6 +107,9 @@ export default function QuickAddModal({ books, onClose, onSaved }) {
           )}
           {state === 'error' && (
             <p className="text-red-400 text-sm">{error}</p>
+          )}
+          {state === 'duplicate' && (
+            <p className="text-amber-400 text-sm">{error}</p>
           )}
           {lastSaved && state === 'idle' && (
             <div className="flex items-center gap-2 text-emerald-400 text-sm">
