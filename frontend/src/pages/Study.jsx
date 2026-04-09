@@ -43,6 +43,7 @@ export default function Study() {
   const [loading, setLoading] = useState(false)
   const [session, setSession] = useState(null) // null means not started
   const [marked, setMarked] = useState({}) // id -> difficulty
+  const [lightbox, setLightbox] = useState(null)
 
   useEffect(() => {
     getBooks().then((r) => setBooks(r.data))
@@ -80,6 +81,7 @@ export default function Study() {
     if (idx < words.length - 1) {
       setIdx((i) => i + 1)
       setFlipped(false)
+      setLightbox(null)
     }
   }
 
@@ -87,6 +89,7 @@ export default function Study() {
     if (idx > 0) {
       setIdx((i) => i - 1)
       setFlipped(false)
+      setLightbox(null)
     }
   }
 
@@ -278,14 +281,6 @@ export default function Study() {
 
         {!flipped ? (
           <div className="space-y-3 px-4 animate-fade-in flex flex-col items-center">
-            {current.image_url && (
-              <img
-                src={current.image_url}
-                alt={current.engWord}
-                className="w-32 h-32 object-cover rounded-xl border border-dark-400 mb-1"
-                onError={(e) => { e.target.style.display = 'none' }}
-              />
-            )}
             <p className="text-3xl font-bold text-slate-100">{current.engWord}</p>
             <p className="text-slate-600 text-sm">{(current.group_name || '').replace(/_/g, ' ')}</p>
             <p className="text-slate-600 text-xs mt-4">Click to reveal →</p>
@@ -293,12 +288,27 @@ export default function Study() {
         ) : (
           <div className="space-y-4 px-4 animate-flip-in flex flex-col items-center">
             {current.image_url && (
-              <img
-                src={current.image_url}
-                alt={current.engWord}
-                className="w-28 h-28 object-cover rounded-xl border border-dark-400 mb-1"
-                onError={(e) => { e.target.style.display = 'none' }}
-              />
+              <>
+                <img
+                  src={current.image_url}
+                  alt={current.engWord}
+                  className="w-28 h-28 object-cover rounded-xl border border-dark-400 cursor-zoom-in hover:opacity-90 transition-opacity"
+                  onClick={(e) => { e.stopPropagation(); setLightbox(current.image_url) }}
+                  onError={(e) => { e.target.style.display = 'none' }}
+                />
+                {lightbox && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
+                    onClick={() => setLightbox(null)}
+                  >
+                    <img
+                      src={lightbox}
+                      alt={current.engWord}
+                      className="max-w-[90vw] max-h-[90vh] rounded-2xl shadow-2xl object-contain"
+                    />
+                  </div>
+                )}
+              </>
             )}
             <p className="text-slate-400 text-sm">{current.engWord}</p>
             <p className="text-2xl font-bold text-slate-100 heb">{current.hebWord}</p>
