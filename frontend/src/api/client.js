@@ -14,6 +14,8 @@ export const deleteWord = (id) => api.delete(`/words/${id}`)
 export const patchDifficulty = (id, difficulty) =>
   api.patch(`/words/${id}/difficulty`, { difficulty })
 
+export const lookupWord = (q) => api.get('/words/lookup', { params: { q } })
+
 // ── Study & Quiz ─────────────────────────────────────────────────────────────
 export const getStudyWords = (params) => api.get('/words/study', { params })
 export const getQuiz = (params) => api.get('/words/quiz', { params })

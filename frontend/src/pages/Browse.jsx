@@ -4,6 +4,7 @@ import { Plus, Search, ChevronUp, ChevronDown, Pencil, Trash2, ChevronLeft, Chev
 import { getWords, deleteWord, getGroups, getBooks, patchDifficulty } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
 import WordModal from '../components/WordModal'
+import QuickAddModal from '../components/QuickAddModal'
 import { GroupPickerDropdown } from '../components/GroupPicker'
 
 const DIFFICULTIES = ['', 'NEW_WORD', 'EASY', 'MEDIUM', 'HARD']
@@ -38,6 +39,7 @@ export default function Browse() {
   // Modal
   const [modalWord, setModalWord] = useState(undefined) // undefined=closed, null=new, obj=edit
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
 
   const searchTimer = useRef(null)
 
@@ -105,12 +107,20 @@ export default function Browse() {
           <h1 className="text-2xl font-bold text-slate-100">Browse Words</h1>
           <p className="text-slate-500 text-sm mt-0.5">{data.total.toLocaleString()} words</p>
         </div>
-        <button
-          className="btn-primary flex items-center gap-2"
-          onClick={() => setModalWord(null)}
-        >
-          <Plus size={16} /> Add Word
-        </button>
+        <div className="flex gap-2">
+          <button
+            className="btn-ghost flex items-center gap-2"
+            onClick={() => setShowQuickAdd(true)}
+          >
+            <Search size={16} /> Quick Add
+          </button>
+          <button
+            className="btn-primary flex items-center gap-2"
+            onClick={() => setModalWord(null)}
+          >
+            <Plus size={16} /> Add Word
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -257,6 +267,18 @@ export default function Browse() {
           </div>
         )}
       </div>
+
+      {/* Quick Add Modal */}
+      {showQuickAdd && (
+        <QuickAddModal
+          books={books}
+          onClose={() => setShowQuickAdd(false)}
+          onSaved={() => {
+            fetchWords()
+            getBooks().then((r) => setBooks(r.data))
+          }}
+        />
+      )}
 
       {/* Word Modal */}
       {modalWord !== undefined && (

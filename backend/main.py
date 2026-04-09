@@ -6,6 +6,8 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import requests
+from bs4 import BeautifulSoup
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "vocabulary.db")
 
@@ -24,6 +26,33 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+_MORFIX_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Referer": "https://www.google.com/",
+}
+
+def _scrape_morfix(eng_word: str) -> dict:
+    url = f"https://www.morfix.co.il/{eng_word}"
+    try:
+        resp = requests.get(url, headers=_MORFIX_HEADERS, timeout=8)
+        resp.raise_for_status()
+    except Exception as e:
+        raise HTTPException(502, f"Could not reach morfix.co.il: {e}")
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    heb_div = soup.find("div", class_="normal_translation_div")
+    heb_word = heb_div.text.strip() if heb_div else ""
+
+    examples_ul = soup.find("ul", class_="Translation_ulFooter_enTohe")
+    examples = ""
+    if examples_ul:
+        items = examples_ul.find_all("li")[:3]
+        examples = "\n".join(li.get_text(strip=True) for li in items)
+
+    return {"hebWord": heb_word, "examples": examples}
 
 
 def extract_book(group_name: str) -> str:
@@ -195,6 +224,12 @@ def get_quiz(
         })
 
     return questions
+
+
+@app.get("/api/words/lookup")
+def lookup_word(q: str = Query(..., min_length=1)):
+    """Scrape morfix.co.il and return hebWord + examples without saving."""
+    return _scrape_morfix(q.strip())
 
 
 @app.get("/api/words/{word_id}")
