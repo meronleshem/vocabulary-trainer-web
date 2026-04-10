@@ -6,6 +6,7 @@ import {
   BookOpen,
   Brain,
   Trophy,
+  PenLine,
   Library,
   Menu,
   X,
@@ -14,10 +15,11 @@ import {
 
 const NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/browse', icon: Search, label: 'Browse' },
-  { to: '/study', icon: Brain, label: 'Flashcards' },
-  { to: '/quiz', icon: Trophy, label: 'Quiz' },
-  { to: '/books', icon: Library, label: 'Books' },
+  { to: '/browse',    icon: Search,          label: 'Browse' },
+  { to: '/study',     icon: Brain,           label: 'Flashcards' },
+  { to: '/quiz',      icon: Trophy,          label: 'Quiz' },
+  { to: '/fill-quiz', icon: PenLine,         label: 'Fill in Blank' },
+  { to: '/books',     icon: Library,         label: 'Books' },
 ]
 
 function NavItem({ to, icon: Icon, label, onClick }) {

@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Browse from './pages/Browse'
 import Study from './pages/Study'
 import Quiz from './pages/Quiz'
+import FillQuiz from './pages/FillQuiz'
 import Books from './pages/Books'
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/browse" element={<Browse />} />
         <Route path="/study" element={<Study />} />
         <Route path="/quiz" element={<Quiz />} />
+        <Route path="/fill-quiz" element={<FillQuiz />} />
         <Route path="/books" element={<Books />} />
       </Routes>
     </Layout>

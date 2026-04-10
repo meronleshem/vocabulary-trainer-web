@@ -252,6 +252,63 @@ def get_quiz(
     return questions
 
 
+@app.get("/api/words/fill-quiz")
+def get_fill_quiz(
+    difficulty: Optional[str] = None,
+    group_name: Optional[str] = None,
+    count: int = Query(10, ge=1, le=50),
+):
+    conditions = ["(examples IS NOT NULL AND examples != '')"]
+    params = []
+    if difficulty:
+        conditions.append("difficulty = ?")
+        params.append(difficulty)
+    if group_name:
+        conditions.append("group_name = ?")
+        params.append(group_name)
+
+    where = " WHERE " + " AND ".join(conditions)
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(f"SELECT * FROM vocabulary{where} ORDER BY RANDOM() LIMIT ?", params + [count])
+    words_raw = [dict(r) for r in cur.fetchall()]
+
+    # Distractor pool: random english words
+    cur.execute("SELECT engWord FROM vocabulary ORDER BY RANDOM() LIMIT 200")
+    pool = [r["engWord"] for r in cur.fetchall()]
+    conn.close()
+
+    questions = []
+    for word in words_raw:
+        eng = word["engWord"]
+        # Pick a random example line that actually contains the word
+        lines = [l.strip() for l in word["examples"].split("\n") if l.strip()]
+        matching = [l for l in lines if re.search(re.escape(eng), l, re.IGNORECASE)]
+        if not matching:
+            continue
+        example_line = random.choice(matching)
+
+        # Replace the word with ____
+        sentence = re.sub(re.escape(eng), "____", example_line, flags=re.IGNORECASE)
+
+        distractors = [w for w in pool if w.lower() != eng.lower()]
+        distractors = list(dict.fromkeys(distractors))  # deduplicate, preserve order
+        random.shuffle(distractors)
+        options = distractors[:3] + [eng]
+        random.shuffle(options)
+
+        questions.append({
+            "id": word["id"],
+            "sentence": sentence,
+            "correct": eng,
+            "options": options,
+            "word": word,
+        })
+
+    return questions
+
+
 @app.get("/api/words/lookup")
 def lookup_word(q: str = Query(..., min_length=1)):
     """Scrape morfix.co.il and return hebWord + examples without saving."""
