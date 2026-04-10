@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, ChevronUp, ChevronDown, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, Upload, ChevronUp, ChevronDown, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getWords, deleteWord, getGroups, getBooks, patchDifficulty } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
 import WordModal from '../components/WordModal'
 import QuickAddModal from '../components/QuickAddModal'
+import ImportModal from '../components/ImportModal'
 import { GroupPickerDropdown } from '../components/GroupPicker'
 
 const DIFFICULTIES = ['', 'NEW_WORD', 'EASY', 'MEDIUM', 'HARD']
@@ -40,6 +41,7 @@ export default function Browse() {
   const [modalWord, setModalWord] = useState(undefined) // undefined=closed, null=new, obj=edit
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   const searchTimer = useRef(null)
 
@@ -108,6 +110,12 @@ export default function Browse() {
           <p className="text-slate-500 text-sm mt-0.5">{data.total.toLocaleString()} words</p>
         </div>
         <div className="flex gap-2">
+          <button
+            className="btn-ghost flex items-center gap-2"
+            onClick={() => setShowImport(true)}
+          >
+            <Upload size={16} /> Import
+          </button>
           <button
             className="btn-ghost flex items-center gap-2"
             onClick={() => setShowQuickAdd(true)}
@@ -267,6 +275,18 @@ export default function Browse() {
           </div>
         )}
       </div>
+
+      {/* Import Modal */}
+      {showImport && (
+        <ImportModal
+          books={books}
+          onClose={() => setShowImport(false)}
+          onSaved={() => {
+            fetchWords()
+            getBooks().then((r) => setBooks(r.data))
+          }}
+        />
+      )}
 
       {/* Quick Add Modal */}
       {showQuickAdd && (
