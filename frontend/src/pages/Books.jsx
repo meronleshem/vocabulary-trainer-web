@@ -3,12 +3,32 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronRight, ChevronDown, Book, Layers } from 'lucide-react'
 import { getBooks } from '../api/client'
 
-const DIFF_PILLS = [
-  { key: 'easy',     label: 'Easy',   color: 'bg-emerald-400/15 text-emerald-400' },
-  { key: 'medium',   label: 'Med',    color: 'bg-amber-400/15 text-amber-400' },
-  { key: 'hard',     label: 'Hard',   color: 'bg-red-400/15 text-red-400' },
-  { key: 'new_word', label: 'New',    color: 'bg-violet-400/15 text-violet-400' },
+const DIFF_SEGMENTS = [
+  { key: 'easy',     color: 'bg-emerald-400', label: 'Easy' },
+  { key: 'medium',   color: 'bg-amber-400',   label: 'Medium' },
+  { key: 'hard',     color: 'bg-red-400',      label: 'Hard' },
+  { key: 'new_word', color: 'bg-violet-400',   label: 'New' },
 ]
+
+function DiffBar({ g }) {
+  const total = g.count || 1
+  return (
+    <div className="flex h-2 w-32 rounded-full overflow-hidden bg-dark-400 gap-px">
+      {DIFF_SEGMENTS.map((s) => {
+        const pct = (g[s.key] / total) * 100
+        if (pct === 0) return null
+        return (
+          <div
+            key={s.key}
+            className={`${s.color} h-full`}
+            style={{ width: `${pct}%` }}
+            title={`${s.label}: ${g[s.key]}`}
+          />
+        )
+      })}
+    </div>
+  )
+}
 
 function BookItem({ book }) {
   const [expanded, setExpanded] = useState(false)
@@ -63,13 +83,9 @@ function BookItem({ book }) {
                     {(g.group_name || 'Uncategorized').replace(/_/g, ' ')}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap justify-end">
-                  {DIFF_PILLS.filter((p) => g[p.key] > 0).map((p) => (
-                    <span key={p.key} className={`text-xs font-medium px-1.5 py-0.5 rounded ${p.color}`}>
-                      {p.label} {g[p.key]}
-                    </span>
-                  ))}
-                  <span className="text-xs text-slate-500 ml-1">{g.count} words</span>
+                <div className="flex items-center gap-3">
+                  <DiffBar g={g} />
+                  <span className="text-xs text-slate-500 w-14 text-right">{g.count} words</span>
                   <ChevronRight size={14} className="text-slate-600" />
                 </div>
               </button>
