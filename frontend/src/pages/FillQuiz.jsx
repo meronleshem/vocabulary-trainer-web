@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight } from 'lucide-react'
+import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
 import { getFillQuiz, getBooks, patchDifficulty } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
 import GroupPicker from '../components/GroupPicker'
@@ -22,6 +22,23 @@ const DIFF_BUTTONS = [
   { key: 'MEDIUM', label: 'Medium', cls: 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/30 border border-amber-500/20' },
   { key: 'HARD',   label: 'Hard',   cls: 'bg-red-500/15 text-red-400 hover:bg-red-500/30 border border-red-500/20' },
 ]
+
+function speakSentence(sentence) {
+  window.speechSynthesis.cancel()
+  const parts = sentence.split('____')
+  const speakPart = (index) => {
+    if (index >= parts.length) return
+    const utt = new SpeechSynthesisUtterance(parts[index].trim())
+    utt.rate = 0.9
+    utt.onend = () => {
+      if (index < parts.length - 1) {
+        setTimeout(() => speakPart(index + 1), 50)
+      }
+    }
+    window.speechSynthesis.speak(utt)
+  }
+  speakPart(0)
+}
 
 // Highlight ____ in the sentence
 function Sentence({ text }) {
@@ -54,6 +71,10 @@ export default function FillQuiz() {
   const [markedDiff, setMarkedDiff] = useState({})
 
   useEffect(() => { getBooks().then((r) => setBooks(r.data)) }, [])
+
+  useEffect(() => {
+    if (phase === 'quiz' && questions.length) speakSentence(questions[qIdx].sentence)
+  }, [qIdx, phase, questions])
 
   const startQuiz = useCallback(async () => {
     setLoading(true)
@@ -96,6 +117,7 @@ export default function FillQuiz() {
   }
 
   const goNext = () => {
+    window.speechSynthesis.cancel()
     if (qIdx + 1 >= questions.length) {
       setPhase('results')
     } else {
@@ -247,8 +269,18 @@ export default function FillQuiz() {
           Choose the word that completes the sentence
         </p>
         <Sentence text={q.sentence} />
+        <div className="flex justify-center mt-5">
+          <button
+            onClick={() => speakSentence(q.sentence)}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary transition-colors"
+            title="Listen"
+          >
+            <Volume2 size={15} />
+            Listen
+          </button>
+        </div>
         {q.word.group_name && (
-          <p className="text-slate-600 text-xs mt-5 text-center">{q.word.group_name.replace(/_/g, ' ')}</p>
+          <p className="text-slate-600 text-xs mt-3 text-center">{q.word.group_name.replace(/_/g, ' ')}</p>
         )}
       </div>
 
