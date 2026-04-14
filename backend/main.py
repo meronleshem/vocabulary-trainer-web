@@ -428,19 +428,37 @@ def list_books():
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        "SELECT group_name, COUNT(*) as count FROM vocabulary GROUP BY group_name ORDER BY group_name"
+        "SELECT group_name, difficulty, COUNT(*) as count FROM vocabulary GROUP BY group_name, difficulty ORDER BY group_name"
     )
-    groups_raw = cur.fetchall()
+    rows = cur.fetchall()
     conn.close()
 
-    books: dict = {}
-    for row in groups_raw:
+    # group_counts[group_name] = {total, EASY, MEDIUM, HARD, NEW_WORD}
+    group_counts: dict = {}
+    for row in rows:
         gname = row["group_name"]
+        diff = row["difficulty"]
+        cnt = row["count"]
+        if gname not in group_counts:
+            group_counts[gname] = {"total": 0, "NEW_WORD": 0, "EASY": 0, "MEDIUM": 0, "HARD": 0}
+        group_counts[gname]["total"] += cnt
+        if diff in group_counts[gname]:
+            group_counts[gname][diff] += cnt
+
+    books: dict = {}
+    for gname, counts in group_counts.items():
         book = extract_book(gname)
         if book not in books:
             books[book] = {"book": book, "total": 0, "groups": []}
-        books[book]["total"] += row["count"]
-        books[book]["groups"].append({"group_name": gname, "count": row["count"]})
+        books[book]["total"] += counts["total"]
+        books[book]["groups"].append({
+            "group_name": gname,
+            "count": counts["total"],
+            "easy": counts["EASY"],
+            "medium": counts["MEDIUM"],
+            "hard": counts["HARD"],
+            "new_word": counts["NEW_WORD"],
+        })
 
     # Sort groups within each book by natural number order
     for b in books.values():

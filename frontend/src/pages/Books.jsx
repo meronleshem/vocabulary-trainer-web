@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronRight, ChevronDown, Book, Layers } from 'lucide-react'
 import { getBooks } from '../api/client'
 
+const DIFF_PILLS = [
+  { key: 'easy',     label: 'Easy',   color: 'bg-emerald-400/15 text-emerald-400' },
+  { key: 'medium',   label: 'Med',    color: 'bg-amber-400/15 text-amber-400' },
+  { key: 'hard',     label: 'Hard',   color: 'bg-red-400/15 text-red-400' },
+  { key: 'new_word', label: 'New',    color: 'bg-violet-400/15 text-violet-400' },
+]
+
 function BookItem({ book }) {
   const [expanded, setExpanded] = useState(false)
   const navigate = useNavigate()
@@ -56,8 +63,13 @@ function BookItem({ book }) {
                     {(g.group_name || 'Uncategorized').replace(/_/g, ' ')}
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500">{g.count} words</span>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {DIFF_PILLS.filter((p) => g[p.key] > 0).map((p) => (
+                    <span key={p.key} className={`text-xs font-medium px-1.5 py-0.5 rounded ${p.color}`}>
+                      {p.label} {g[p.key]}
+                    </span>
+                  ))}
+                  <span className="text-xs text-slate-500 ml-1">{g.count} words</span>
                   <ChevronRight size={14} className="text-slate-600" />
                 </div>
               </button>

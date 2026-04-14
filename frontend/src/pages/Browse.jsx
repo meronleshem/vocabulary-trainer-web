@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, Search, Upload, ChevronUp, ChevronDown, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getWords, deleteWord, getGroups, getBooks, patchDifficulty } from '../api/client'
-import { DIFF_LABELS } from '../components/DifficultyBadge'
+import { DIFF_LABELS, DIFF_DOT } from '../components/DifficultyBadge'
 import WordModal from '../components/WordModal'
 import QuickAddModal from '../components/QuickAddModal'
 import ImportModal from '../components/ImportModal'
@@ -207,7 +207,12 @@ export default function Browse() {
                     key={word.id}
                     className="border-b border-dark-400/50 hover:bg-dark-500/50 transition-colors group"
                   >
-                    <td className="px-4 py-3 font-medium text-slate-200">{word.engWord}</td>
+                    <td className="px-4 py-3 font-medium text-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${DIFF_DOT[word.difficulty] || 'bg-slate-500'}`} />
+                        {word.engWord}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-slate-300 heb">{word.hebWord}</td>
                     <td className="px-4 py-3">
                       <select
