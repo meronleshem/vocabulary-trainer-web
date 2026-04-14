@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Image } from 'lucide-react'
 import { createWord, updateWord } from '../api/client'
+import { getImageUrl } from '../utils/image'
 
 const DIFFICULTIES = ['NEW_WORD', 'EASY', 'MEDIUM', 'HARD']
 
@@ -150,19 +151,19 @@ export default function WordModal({ word, groups, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Image URL */}
+          {/* Image */}
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Image URL</label>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Image filename</label>
             <div className="flex gap-3 items-start">
               <input
                 className="input flex-1"
                 value={form.image_url}
                 onChange={(e) => set('image_url', e.target.value)}
-                placeholder="https://…"
+                placeholder="apple.jpg"
               />
               {form.image_url && !imgError ? (
                 <img
-                  src={form.image_url}
+                  src={getImageUrl(form.image_url)}
                   alt="preview"
                   onError={() => setImgError(true)}
                   className="w-14 h-14 rounded-lg object-cover border border-dark-400 flex-shrink-0"

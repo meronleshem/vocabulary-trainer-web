@@ -5,13 +5,17 @@ import sqlite3
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import requests
 from bs4 import BeautifulSoup
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "vocabulary.db")
+IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "Images")
 
 app = FastAPI(title="VocabularyApp API", version="1.0.0")
+
+app.mount("/api/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
 app.add_middleware(
     CORSMiddleware,

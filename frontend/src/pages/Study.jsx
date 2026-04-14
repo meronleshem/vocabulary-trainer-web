@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { getImageUrl } from '../utils/image'
 import {
   RefreshCw, ChevronLeft, ChevronRight, RotateCcw,
   CheckCircle, Volume2,
@@ -290,10 +291,10 @@ export default function Study() {
             {current.image_url && (
               <>
                 <img
-                  src={current.image_url}
+                  src={getImageUrl(current.image_url)}
                   alt={current.engWord}
                   className="w-28 h-28 object-cover rounded-xl border border-dark-400 cursor-zoom-in hover:opacity-90 transition-opacity"
-                  onClick={(e) => { e.stopPropagation(); setLightbox(current.image_url) }}
+                  onClick={(e) => { e.stopPropagation(); setLightbox(getImageUrl(current.image_url)) }}
                   onError={(e) => { e.target.style.display = 'none' }}
                 />
                 {lightbox && (
