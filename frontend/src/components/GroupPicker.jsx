@@ -27,65 +27,104 @@ const displayName = (group_name) => (group_name || 'Uncategorized').replace(/_/g
 
 /**
  * Inline hierarchical group picker — used inside settings panels (Study, Quiz).
+ * `value` is an array of selected group_names; [] means "All groups".
  */
-export function GroupPickerInline({ books, value, onChange }) {
+export function GroupPickerInline({ books, value = [], onChange }) {
   const sorted = sortedBooks(books)
   const [expanded, setExpanded] = useState({})
 
+  // Auto-expand books that contain any selected group
   useEffect(() => {
-    if (!value) return
-    const owner = sorted.find((b) => b.groups.some((g) => g.group_name === value))
-    if (owner) setExpanded((e) => ({ ...e, [owner.book]: true }))
+    if (!value.length) return
+    const updates = {}
+    value.forEach((v) => {
+      const owner = sorted.find((b) => b.groups.some((g) => g.group_name === v))
+      if (owner) updates[owner.book] = true
+    })
+    if (Object.keys(updates).length) setExpanded((e) => ({ ...e, ...updates }))
   }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggle = (bookName) =>
+  const toggleBook = (bookName) =>
     setExpanded((prev) => ({ ...prev, [bookName]: !prev[bookName] }))
+
+  const toggleGroup = (groupName) => {
+    if (value.includes(groupName)) {
+      onChange(value.filter((n) => n !== groupName))
+    } else {
+      onChange([...value, groupName])
+    }
+  }
+
+  const isAll = value.length === 0
 
   return (
     <div className="border border-dark-400 rounded-lg overflow-hidden text-sm max-h-64 overflow-y-auto">
       <button
         type="button"
-        onClick={() => onChange('')}
+        onClick={() => onChange([])}
         className={`w-full text-left px-3 py-2 flex items-center justify-between transition-colors
-          ${value === '' ? 'bg-primary/15 text-primary-light' : 'text-slate-400 hover:bg-dark-400'}`}
+          ${isAll ? 'bg-primary/15 text-primary-light' : 'text-slate-400 hover:bg-dark-400'}`}
       >
         <span>All groups</span>
+        {!isAll && (
+          <span className="text-xs bg-primary/20 text-primary-light rounded-full px-1.5 py-0.5">
+            {value.length} selected
+          </span>
+        )}
       </button>
 
       {sorted.map((b) => {
         const isOpen = !!expanded[b.book]
-        const hasSelection = b.groups.some((g) => g.group_name === value)
+        const selectedInBook = b.groups.filter((g) => value.includes(g.group_name)).length
         return (
           <div key={b.book} className="border-t border-dark-400">
             <button
               type="button"
-              onClick={() => toggle(b.book)}
+              onClick={() => toggleBook(b.book)}
               className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors
-                ${hasSelection && !isOpen ? 'bg-primary/10 text-primary-light' : 'text-slate-300 hover:bg-dark-400'}`}
+                ${selectedInBook && !isOpen ? 'bg-primary/10 text-primary-light' : 'text-slate-300 hover:bg-dark-400'}`}
             >
               {isOpen
                 ? <ChevronDown size={14} className="flex-shrink-0 text-slate-500" />
                 : <ChevronRight size={14} className="flex-shrink-0 text-slate-500" />}
               <span className="flex-1 font-medium capitalize">{b.book}</span>
+              {selectedInBook > 0 && (
+                <span className="text-xs bg-primary/20 text-primary-light rounded-full px-1.5 py-0.5 mr-1">
+                  {selectedInBook}
+                </span>
+              )}
               <span className="text-slate-600 text-xs">{b.total}</span>
             </button>
 
             {isOpen && (
               <div className="bg-dark-600/40">
-                {b.groups.map((g) => (
-                  <button
-                    key={g.group_name}
-                    type="button"
-                    onClick={() => onChange(g.group_name)}
-                    className={`w-full text-left pl-8 pr-3 py-1.5 flex items-center justify-between transition-colors
-                      ${value === g.group_name
-                        ? 'bg-primary/15 text-primary-light'
-                        : 'text-slate-400 hover:bg-dark-400 hover:text-slate-300'}`}
-                  >
-                    <span>{displayName(g.group_name)}</span>
-                    <span className="text-slate-600 text-xs">{g.count}</span>
-                  </button>
-                ))}
+                {b.groups.map((g) => {
+                  const isSelected = value.includes(g.group_name)
+                  return (
+                    <button
+                      key={g.group_name}
+                      type="button"
+                      onClick={() => toggleGroup(g.group_name)}
+                      className={`w-full text-left pl-8 pr-3 py-1.5 flex items-center justify-between transition-colors
+                        ${isSelected
+                          ? 'bg-primary/15 text-primary-light'
+                          : 'text-slate-400 hover:bg-dark-400 hover:text-slate-300'}`}
+                    >
+                      <span>{displayName(g.group_name)}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-600 text-xs">{g.count}</span>
+                        <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0
+                          ${isSelected ? 'bg-primary border-primary' : 'border-slate-600'}`}>
+                          {isSelected && (
+                            <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="1.5,5 4,7.5 8.5,2" />
+                            </svg>
+                          )}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>

@@ -66,7 +66,7 @@ export default function FillQuiz() {
   const [score, setScore] = useState(0)
   const [loading, setLoading] = useState(false)
   const [phase, setPhase] = useState('setup') // setup | quiz | results
-  const [settings, setSettings] = useState({ difficulty: '', group_name: '', count: 10 })
+  const [settings, setSettings] = useState({ difficulty: '', group_names: [], count: 10 })
   const [history, setHistory] = useState([])
   const [markedDiff, setMarkedDiff] = useState({})
 
@@ -81,7 +81,7 @@ export default function FillQuiz() {
     try {
       const res = await getFillQuiz({
         difficulty: settings.difficulty || undefined,
-        group_name: settings.group_name || undefined,
+        group_names: settings.group_names.length ? settings.group_names : undefined,
         count: settings.count,
       })
       if (!res.data.length) {
@@ -166,8 +166,8 @@ export default function FillQuiz() {
             <label className="block text-xs font-medium text-slate-400 mb-1">Group</label>
             <GroupPicker
               books={books}
-              value={settings.group_name}
-              onChange={(val) => setSettings((s) => ({ ...s, group_name: val }))}
+              value={settings.group_names}
+              onChange={(val) => setSettings((s) => ({ ...s, group_names: val }))}
             />
           </div>
 

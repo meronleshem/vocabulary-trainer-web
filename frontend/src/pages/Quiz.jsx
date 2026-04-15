@@ -43,7 +43,7 @@ export default function Quiz() {
   const [phase, setPhase] = useState('setup') // setup | quiz | results
   const [settings, setSettings] = useState({
     difficulty: '',
-    group_name: '',
+    group_names: [],
     count: 10,
     direction: 'eng_to_heb',
   })
@@ -67,7 +67,7 @@ export default function Quiz() {
     try {
       const res = await getQuiz({
         difficulty: settings.difficulty || undefined,
-        group_name: settings.group_name || undefined,
+        group_names: settings.group_names.length ? settings.group_names : undefined,
         count: settings.count,
         direction: settings.direction,
       })
@@ -172,8 +172,8 @@ export default function Quiz() {
             <label className="block text-xs font-medium text-slate-400 mb-1">Group</label>
             <GroupPicker
               books={books}
-              value={settings.group_name}
-              onChange={(val) => setSettings((s) => ({ ...s, group_name: val }))}
+              value={settings.group_names}
+              onChange={(val) => setSettings((s) => ({ ...s, group_names: val }))}
             />
           </div>
 

@@ -2,7 +2,7 @@ import os
 import re
 import random
 import sqlite3
-from typing import Optional
+from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -177,16 +177,17 @@ def list_words(
 @app.get("/api/words/study")
 def get_study_words(
     difficulty: Optional[str] = None,
-    group_name: Optional[str] = None,
+    group_names: List[str] = Query(default=[]),
     limit: int = Query(20, ge=1, le=100),
 ):
     conditions, params = [], []
     if difficulty:
         conditions.append("difficulty = ?")
         params.append(difficulty)
-    if group_name:
-        conditions.append("group_name = ?")
-        params.append(group_name)
+    if group_names:
+        placeholders = ",".join(["?"] * len(group_names))
+        conditions.append(f"group_name IN ({placeholders})")
+        params.extend(group_names)
 
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     conn = get_db()
@@ -200,7 +201,7 @@ def get_study_words(
 @app.get("/api/words/quiz")
 def get_quiz(
     difficulty: Optional[str] = None,
-    group_name: Optional[str] = None,
+    group_names: List[str] = Query(default=[]),
     count: int = Query(10, ge=1, le=50),
     direction: str = "eng_to_heb",
 ):
@@ -208,9 +209,10 @@ def get_quiz(
     if difficulty:
         conditions.append("difficulty = ?")
         params.append(difficulty)
-    if group_name:
-        conditions.append("group_name = ?")
-        params.append(group_name)
+    if group_names:
+        placeholders = ",".join(["?"] * len(group_names))
+        conditions.append(f"group_name IN ({placeholders})")
+        params.extend(group_names)
 
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     conn = get_db()
@@ -259,7 +261,7 @@ def get_quiz(
 @app.get("/api/words/fill-quiz")
 def get_fill_quiz(
     difficulty: Optional[str] = None,
-    group_name: Optional[str] = None,
+    group_names: List[str] = Query(default=[]),
     count: int = Query(10, ge=1, le=50),
 ):
     conditions = ["(examples IS NOT NULL AND examples != '')"]
@@ -267,9 +269,10 @@ def get_fill_quiz(
     if difficulty:
         conditions.append("difficulty = ?")
         params.append(difficulty)
-    if group_name:
-        conditions.append("group_name = ?")
-        params.append(group_name)
+    if group_names:
+        placeholders = ",".join(["?"] * len(group_names))
+        conditions.append(f"group_name IN ({placeholders})")
+        params.extend(group_names)
 
     where = " WHERE " + " AND ".join(conditions)
     conn = get_db()

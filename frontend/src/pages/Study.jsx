@@ -36,7 +36,7 @@ export default function Study() {
   const [flipped, setFlipped] = useState(false)
   const [settings, setSettings] = useState({
     difficulty: '',
-    group_name: '',
+    group_names: [],
     limit: 20,
     showExamples: true,
   })
@@ -61,7 +61,7 @@ export default function Study() {
     try {
       const res = await getStudyWords({
         difficulty: settings.difficulty || undefined,
-        group_name: settings.group_name || undefined,
+        group_names: settings.group_names.length ? settings.group_names : undefined,
         limit: settings.limit,
       })
       setWords(res.data)
@@ -146,8 +146,8 @@ export default function Study() {
             <label className="block text-xs font-medium text-slate-400 mb-1">Group Filter</label>
             <GroupPicker
               books={books}
-              value={settings.group_name}
-              onChange={(val) => setSettings((s) => ({ ...s, group_name: val }))}
+              value={settings.group_names}
+              onChange={(val) => setSettings((s) => ({ ...s, group_names: val }))}
             />
           </div>
 
