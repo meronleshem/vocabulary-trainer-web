@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Volume2, CheckCircle, XCircle, Trophy, RefreshCw,
   ArrowRight, Search, X, Loader2, Eye, Headphones,
-  PenLine, GraduationCap, Zap, Delete,
+  PenLine, Zap, Delete,
 } from 'lucide-react'
 import { getWords, getStudySession, getBooks } from '../api/client'
 import { getImageUrl } from '../utils/image'
 import { GroupPickerDropdown } from '../components/GroupPicker'
+import DifficultyBadge from '../components/DifficultyBadge'
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,35 @@ const speak = (text, lang = 'en-US') => {
   const utt = new SpeechSynthesisUtterance(text)
   utt.lang = lang
   window.speechSynthesis.speak(utt)
+}
+
+const playSound = (type) => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    if (type === 'correct') {
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(660, ctx.currentTime)
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1)
+      gain.gain.setValueAtTime(0.25, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+      osc.start(ctx.currentTime)
+      osc.stop(ctx.currentTime + 0.35)
+    } else {
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(220, ctx.currentTime)
+      osc.frequency.setValueAtTime(160, ctx.currentTime + 0.15)
+      gain.gain.setValueAtTime(0.2, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+      osc.start(ctx.currentTime)
+      osc.stop(ctx.currentTime + 0.35)
+    }
+  } catch (_) {
+    // AudioContext unavailable — silent fallback
+  }
 }
 
 const shuffle = (arr) => {
@@ -55,10 +85,10 @@ function prepareSessionData(words) {
 }
 
 const STAGE_META = [
-  { num: 1, title: 'Stage 1', subtitle: 'Hebrew → English', icon: Eye,         color: 'text-violet-400', border: 'border-violet-500/30', bg: 'bg-violet-500/10' },
-  { num: 2, title: 'Stage 2', subtitle: 'Listen → Hebrew',  icon: Volume2,     color: 'text-blue-400',   border: 'border-blue-500/30',   bg: 'bg-blue-500/10'   },
-  { num: 3, title: 'Stage 3', subtitle: 'Audio → Hebrew',   icon: Headphones,  color: 'text-cyan-400',   border: 'border-cyan-500/30',   bg: 'bg-cyan-500/10'   },
-  { num: 4, title: 'Stage 4', subtitle: 'Spell it out',     icon: PenLine,     color: 'text-amber-400',  border: 'border-amber-500/30',  bg: 'bg-amber-500/10'  },
+  { num: 1, title: 'Stage 1', subtitle: 'Hebrew → English', icon: Eye,        color: 'text-violet-400', border: 'border-violet-500/30', bg: 'bg-violet-500/10' },
+  { num: 2, title: 'Stage 2', subtitle: 'Listen → Hebrew',  icon: Volume2,    color: 'text-blue-400',   border: 'border-blue-500/30',   bg: 'bg-blue-500/10'   },
+  { num: 3, title: 'Stage 3', subtitle: 'Audio → Hebrew',   icon: Headphones, color: 'text-cyan-400',   border: 'border-cyan-500/30',   bg: 'bg-cyan-500/10'   },
+  { num: 4, title: 'Stage 4', subtitle: 'Spell it out',     icon: PenLine,    color: 'text-amber-400',  border: 'border-amber-500/30',  bg: 'bg-amber-500/10'  },
 ]
 
 // ── Option button style helper ────────────────────────────────────────────────
@@ -77,28 +107,26 @@ function optionCls(answered, isCorrect, isSelected) {
 
 function Stage1({ word, answered, selectedOption, onAnswer }) {
   return (
-    <div className="space-y-5 animate-fade-in">
-      <div className="card text-center py-8 space-y-4">
+    <div className="space-y-4 animate-fade-in">
+      <div className="card py-5 space-y-3 text-center">
         <p className="text-xs text-slate-500 uppercase tracking-wider">What is the English translation?</p>
         <img
           src={getImg(word.image_url)}
           alt=""
-          className="mx-auto w-48 h-36 object-cover rounded-xl border border-dark-400"
+          className="mx-auto w-44 h-32 object-contain bg-dark-700 rounded-lg border border-dark-400"
           onError={(e) => { e.target.src = DEFAULT_IMG }}
         />
-        <p className="text-4xl font-bold text-slate-100 heb">{word.hebWord}</p>
+        <p className="text-3xl font-bold text-slate-100 heb">{word.hebWord}</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {word.stage1Options.map((opt, i) => (
           <button
             key={i}
             disabled={answered}
             onClick={() => onAnswer(opt === word.engWord, opt)}
-            className={`py-4 px-5 rounded-xl border-2 text-center font-medium transition-all duration-200 ${optionCls(
-              answered,
-              opt === word.engWord,
-              opt === selectedOption
+            className={`py-3 px-4 rounded-xl border-2 text-center font-medium transition-all duration-200 ${optionCls(
+              answered, opt === word.engWord, opt === selectedOption
             )}`}
           >
             {opt}
@@ -117,8 +145,8 @@ function Stage2({ word, answered, selectedOption, onAnswer }) {
   }, [word.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      <div className="card text-center py-10 space-y-4">
+    <div className="space-y-4 animate-fade-in">
+      <div className="card py-6 space-y-3 text-center">
         <p className="text-xs text-slate-500 uppercase tracking-wider">What is the Hebrew translation?</p>
         <div className="flex items-center justify-center gap-3">
           <p className="text-3xl font-bold text-slate-100">{word.engWord}</p>
@@ -127,21 +155,19 @@ function Stage2({ word, answered, selectedOption, onAnswer }) {
             className="text-slate-500 hover:text-primary-light transition-colors"
             title="Play again"
           >
-            <Volume2 size={22} />
+            <Volume2 size={20} />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {word.stage2Options.map((opt, i) => (
           <button
             key={i}
             disabled={answered}
             onClick={() => onAnswer(opt === word.hebWord, opt)}
-            className={`py-4 px-5 rounded-xl border-2 text-center font-medium heb transition-all duration-200 ${optionCls(
-              answered,
-              opt === word.hebWord,
-              opt === selectedOption
+            className={`py-3 px-4 rounded-xl border-2 text-center font-medium heb transition-all duration-200 ${optionCls(
+              answered, opt === word.hebWord, opt === selectedOption
             )}`}
           >
             {opt}
@@ -160,39 +186,37 @@ function Stage3({ word, answered, selectedOption, onAnswer }) {
   }, [word.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      <div className="card text-center py-8 space-y-3">
-        <p className="text-xs text-slate-500 uppercase tracking-wider">Listen and choose the correct Hebrew word</p>
+    <div className="space-y-4 animate-fade-in">
+      <div className="card py-5 space-y-3 text-center">
+        <p className="text-xs text-slate-500 uppercase tracking-wider">Listen and choose the Hebrew word</p>
         <button
           onClick={() => speak(word.engWord, 'en-US')}
           className="mx-auto flex flex-col items-center gap-2 group"
         >
-          <div className="w-16 h-16 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center group-hover:bg-primary/25 transition-colors">
-            <Volume2 size={28} className="text-primary-light" />
+          <div className="w-14 h-14 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center group-hover:bg-primary/25 transition-colors">
+            <Volume2 size={24} className="text-primary-light" />
           </div>
           <span className="text-xs text-slate-500 group-hover:text-slate-400 transition-colors">Tap to replay</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {word.stage3Options.map((opt, i) => (
           <button
             key={i}
             disabled={answered}
             onClick={() => onAnswer(opt.isCorrect, opt.hebWord)}
-            className={`p-4 rounded-xl border-2 flex flex-col items-center gap-3 transition-all duration-200 ${optionCls(
-              answered,
-              opt.isCorrect,
-              opt.hebWord === selectedOption
+            className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all duration-200 ${optionCls(
+              answered, opt.isCorrect, opt.hebWord === selectedOption
             )}`}
           >
             <img
               src={getImg(opt.image_url)}
               alt=""
-              className="w-24 h-20 object-cover rounded-lg border border-dark-400/50"
+              className="w-full h-24 object-contain bg-dark-700 rounded-lg border border-dark-400/50"
               onError={(e) => { e.target.src = DEFAULT_IMG }}
             />
-            <span className="heb font-medium text-center">{opt.hebWord}</span>
+            <span className="heb font-medium text-center text-sm">{opt.hebWord}</span>
           </button>
         ))}
       </div>
@@ -245,26 +269,25 @@ function Stage4({ word, answered, onAnswer }) {
   const built = builtLetters.map((l) => l.letter).join('')
   const target = word.engWord.toLowerCase().replace(/[\s-]+/g, '')
   const isComplete = built === target
-  const letterCount = target.length
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       {/* Question */}
-      <div className="card text-center py-8 space-y-4">
+      <div className="card py-5 space-y-3 text-center">
         <p className="text-xs text-slate-500 uppercase tracking-wider">
-          Spell the English word · {letterCount} letters
+          Spell the English word · {target.length} letters
         </p>
         <img
           src={getImg(word.image_url)}
           alt=""
-          className="mx-auto w-48 h-36 object-cover rounded-xl border border-dark-400"
+          className="mx-auto w-44 h-32 object-contain bg-dark-700 rounded-lg border border-dark-400"
           onError={(e) => { e.target.src = DEFAULT_IMG }}
         />
-        <p className="text-4xl font-bold text-slate-100 heb">{word.hebWord}</p>
+        <p className="text-3xl font-bold text-slate-100 heb">{word.hebWord}</p>
       </div>
 
       {/* Built word display */}
-      <div className="min-h-16 flex items-center justify-center gap-2 flex-wrap px-2">
+      <div className="min-h-12 flex items-center justify-center gap-2 flex-wrap px-2">
         {builtLetters.length === 0 ? (
           <span className="text-slate-600 text-sm italic">Click letters below to build the word…</span>
         ) : (
@@ -289,20 +312,20 @@ function Stage4({ word, answered, onAnswer }) {
 
       {/* Action buttons */}
       {!submitted && (
-        <div className="flex gap-3 justify-center">
+        <div className="flex gap-2 justify-center">
           <button
             onClick={removeLast}
             disabled={builtLetters.length === 0}
-            className="btn-ghost flex items-center gap-2 disabled:opacity-30"
+            className="btn-ghost flex items-center gap-1.5 py-1.5 px-3 text-sm disabled:opacity-30"
           >
-            <Delete size={15} /> Back
+            <Delete size={14} /> Back
           </button>
           <button
             onClick={handleSubmit}
             disabled={builtLetters.length === 0}
-            className="btn-primary flex items-center gap-2 disabled:opacity-50"
+            className="btn-primary flex items-center gap-1.5 py-1.5 px-3 text-sm disabled:opacity-50"
           >
-            Check <ArrowRight size={15} />
+            Check <ArrowRight size={14} />
           </button>
         </div>
       )}
@@ -310,14 +333,14 @@ function Stage4({ word, answered, onAnswer }) {
       {/* Show correct spelling after wrong answer */}
       {submitted && !isComplete && (
         <p className="text-center text-slate-400 text-sm">
-          Correct spelling: <span className="text-emerald-400 font-bold">{word.engWord}</span>
+          Correct: <span className="text-emerald-400 font-bold">{word.engWord}</span>
         </p>
       )}
 
       {/* Letter bank */}
-      <div className="card">
-        <p className="text-xs text-slate-600 mb-3 text-center uppercase tracking-wider">Letter Bank</p>
-        <div className="flex flex-wrap gap-2 justify-center">
+      <div className="card py-3 px-4">
+        <p className="text-xs text-slate-600 mb-2 text-center uppercase tracking-wider">Letter Bank</p>
+        <div className="flex flex-wrap gap-1.5 justify-center">
           {bank.length === 0 ? (
             <span className="text-slate-600 text-sm">All letters used</span>
           ) : (
@@ -349,20 +372,20 @@ function StageTransition({ completedStage, nextStage, wordsCount, onContinue }) 
   const NextIcon = next?.icon
 
   return (
-    <div className="max-w-md mx-auto text-center space-y-6 animate-fade-in">
-      <div className="card py-12 space-y-6">
-        <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center mx-auto">
-          <CheckCircle size={32} className="text-emerald-400" />
+    <div className="max-w-md mx-auto text-center space-y-5 animate-fade-in">
+      <div className="card py-10 space-y-5">
+        <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center mx-auto">
+          <CheckCircle size={28} className="text-emerald-400" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-slate-100">Stage {completedStage} Complete!</h2>
+          <h2 className="text-xl font-bold text-slate-100">Stage {completedStage} Complete!</h2>
           <p className="text-slate-500 text-sm mt-1">Practiced all {wordsCount} words</p>
         </div>
 
         {next && (
-          <div className={`rounded-xl border p-4 ${next.bg} ${next.border}`}>
+          <div className={`rounded-xl border p-3 ${next.bg} ${next.border}`}>
             <div className="flex items-center justify-center gap-2 mb-1">
-              {NextIcon && <NextIcon size={18} className={next.color} />}
+              {NextIcon && <NextIcon size={16} className={next.color} />}
               <span className={`font-semibold text-sm ${next.color}`}>{next.title}</span>
             </div>
             <p className="text-slate-400 text-sm">{next.subtitle}</p>
@@ -370,12 +393,12 @@ function StageTransition({ completedStage, nextStage, wordsCount, onContinue }) 
         )}
 
         <button
-          className="btn-primary px-8 py-2.5 flex items-center gap-2 mx-auto"
+          className="btn-primary px-8 py-2 flex items-center gap-2 mx-auto"
           onClick={onContinue}
         >
           {nextStage
-            ? <>Continue to Stage {nextStage} <ArrowRight size={16} /></>
-            : <>See Results <Trophy size={16} /></>}
+            ? <>Continue to Stage {nextStage} <ArrowRight size={15} /></>
+            : <>See Results <Trophy size={15} /></>}
         </button>
       </div>
 
@@ -384,7 +407,7 @@ function StageTransition({ completedStage, nextStage, wordsCount, onContinue }) 
         {[1, 2, 3, 4].map((s) => (
           <div key={s} className="flex items-center">
             <div
-              className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
+              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
                 s <= completedStage
                   ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
                   : 'bg-dark-500 border-dark-400 text-slate-600'
@@ -393,9 +416,7 @@ function StageTransition({ completedStage, nextStage, wordsCount, onContinue }) 
               {s <= completedStage ? '✓' : s}
             </div>
             {s < 4 && (
-              <div
-                className={`w-8 h-0.5 mx-1 ${s < completedStage ? 'bg-emerald-500/40' : 'bg-dark-400'}`}
-              />
+              <div className={`w-7 h-0.5 mx-1 ${s < completedStage ? 'bg-emerald-500/40' : 'bg-dark-400'}`} />
             )}
           </div>
         ))}
@@ -443,7 +464,6 @@ function WordSelector({ onStart }) {
     }
   }, [search, groupFilter, page])
 
-  // Reset to page 1 when filters change
   useEffect(() => { setPage(1) }, [search, groupFilter])
   useEffect(() => { loadWords() }, [loadWords])
 
@@ -482,7 +502,7 @@ function WordSelector({ onStart }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {STAGE_META.map(({ num, title, subtitle, icon: Icon, color, bg, border }) => (
           <div key={num} className={`rounded-xl border p-3 text-center ${bg} ${border}`}>
-            <Icon size={16} className={`mx-auto mb-1 ${color}`} />
+            <Icon size={14} className={`mx-auto mb-1 ${color}`} />
             <p className={`text-xs font-semibold ${color}`}>{title}</p>
             <p className="text-slate-500 text-xs mt-0.5">{subtitle}</p>
           </div>
@@ -510,10 +530,7 @@ function WordSelector({ onStart }) {
                 className="flex items-center gap-1.5 bg-primary/10 border border-primary/25 text-primary-light text-sm px-3 py-1 rounded-full"
               >
                 {w.engWord}
-                <button
-                  onClick={() => toggleWord(w)}
-                  className="text-primary/50 hover:text-red-400 transition-colors"
-                >
+                <button onClick={() => toggleWord(w)} className="text-primary/50 hover:text-red-400 transition-colors">
                   <X size={12} />
                 </button>
               </span>
@@ -524,11 +541,9 @@ function WordSelector({ onStart }) {
             disabled={selected.length < MIN_WORDS || sessionLoading}
             className="btn-primary w-full py-2.5 flex items-center justify-center gap-2"
           >
-            {sessionLoading ? (
-              <><Loader2 size={16} className="animate-spin" /> Loading…</>
-            ) : (
-              <><Zap size={16} /> Start Session ({selected.length} words)</>
-            )}
+            {sessionLoading
+              ? <><Loader2 size={16} className="animate-spin" /> Loading…</>
+              : <><Zap size={16} /> Start Session ({selected.length} words)</>}
           </button>
         </div>
       )}
@@ -544,21 +559,17 @@ function WordSelector({ onStart }) {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <GroupPickerDropdown
-          books={books}
-          value={groupFilter}
-          onChange={setGroupFilter}
-        />
+        <GroupPickerDropdown books={books} value={groupFilter} onChange={setGroupFilter} />
       </div>
 
       {/* Word list */}
       <div className="card divide-y divide-dark-400/50 p-0 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-14">
-            <Loader2 size={24} className="animate-spin text-primary" />
+          <div className="flex items-center justify-center py-12">
+            <Loader2 size={22} className="animate-spin text-primary" />
           </div>
         ) : allWords.length === 0 ? (
-          <div className="text-center py-14 text-slate-500 text-sm">No words found</div>
+          <div className="text-center py-12 text-slate-500 text-sm">No words found</div>
         ) : (
           allWords.map((word) => {
             const isSel = selectedIds.has(word.id)
@@ -568,7 +579,7 @@ function WordSelector({ onStart }) {
                 key={word.id}
                 onClick={() => !isDisabled && toggleWord(word)}
                 disabled={isDisabled}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
                   isSel
                     ? 'bg-primary/10 hover:bg-primary/15'
                     : isDisabled
@@ -589,22 +600,25 @@ function WordSelector({ onStart }) {
                   )}
                 </div>
 
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
                   <span className="text-slate-200 font-medium">{word.engWord}</span>
-                  <span className="text-slate-600 mx-2 text-xs">·</span>
+                  <span className="text-slate-600 text-xs">·</span>
                   <span className="text-slate-400 heb text-sm">{word.hebWord}</span>
                 </div>
 
-                {word.image_url && (
-                  <div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0 border border-dark-400">
-                    <img
-                      src={getImageUrl(word.image_url)}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      onError={(e) => { e.target.style.display = 'none' }}
-                    />
-                  </div>
-                )}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <DifficultyBadge difficulty={word.difficulty} />
+                  {word.image_url && (
+                    <div className="w-7 h-7 rounded overflow-hidden border border-dark-400">
+                      <img
+                        src={getImageUrl(word.image_url)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.style.display = 'none' }}
+                      />
+                    </div>
+                  )}
+                </div>
               </button>
             )
           })
@@ -616,23 +630,9 @@ function WordSelector({ onStart }) {
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500">{total} words total</span>
           <div className="flex items-center gap-2">
-            <button
-              disabled={page === 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="btn-ghost px-3 py-1.5 text-sm disabled:opacity-30"
-            >
-              Prev
-            </button>
-            <span className="text-slate-500 text-xs">
-              {page} / {totalPages}
-            </span>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="btn-ghost px-3 py-1.5 text-sm disabled:opacity-30"
-            >
-              Next
-            </button>
+            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="btn-ghost px-3 py-1.5 text-sm disabled:opacity-30">Prev</button>
+            <span className="text-slate-500 text-xs">{page} / {totalPages}</span>
+            <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="btn-ghost px-3 py-1.5 text-sm disabled:opacity-30">Next</button>
           </div>
         </div>
       )}
@@ -652,42 +652,34 @@ function SessionResults({ score, mistakes, totalWords, onRetry, onNew }) {
     : pct >= 50 ? { label: 'Keep going!',     color: 'text-amber-400' }
     :             { label: 'Keep practicing', color: 'text-red-400' }
 
-  // Deduplicate mistakes by word+stage
   const uniqueMistakes = [
     ...new Map(mistakes.map((m) => [`${m.word.id}-${m.stage}`, m])).values(),
   ]
 
   return (
     <div className="max-w-2xl mx-auto space-y-5 animate-fade-in">
-      {/* Score card */}
-      <div className="card text-center space-y-4 py-10">
-        <Trophy size={48} className={`mx-auto ${grade.color}`} />
+      <div className="card text-center space-y-3 py-8">
+        <Trophy size={44} className={`mx-auto ${grade.color}`} />
         <h2 className="text-2xl font-bold text-slate-100">{grade.label}</h2>
         <p className={`text-5xl font-bold ${grade.color}`}>{pct}%</p>
         <p className="text-slate-400 text-sm">
-          {score.correct} correct · {score.incorrect} incorrect
-          &nbsp;·&nbsp;{totalWords} words × 4 stages
+          {score.correct} correct · {score.incorrect} incorrect · {totalWords} words × 4 stages
         </p>
-        <div className="flex gap-3 pt-2 max-w-xs mx-auto">
-          <button className="btn-ghost flex-1 py-2.5" onClick={onNew}>
-            New Session
-          </button>
+        <div className="flex gap-3 pt-1 max-w-xs mx-auto">
+          <button className="btn-ghost flex-1 py-2.5" onClick={onNew}>New Session</button>
           <button className="btn-primary flex-1 py-2.5 flex items-center justify-center gap-2" onClick={onRetry}>
             <RefreshCw size={14} /> Retry
           </button>
         </div>
       </div>
 
-      {/* Mistakes review */}
       {uniqueMistakes.length > 0 && (
         <div className="card">
-          <h3 className="text-sm font-semibold text-slate-300 mb-4">
-            Words to Review ({uniqueMistakes.length})
-          </h3>
-          <div className="space-y-0 divide-y divide-dark-400/50">
+          <h3 className="text-sm font-semibold text-slate-300 mb-3">Words to Review ({uniqueMistakes.length})</h3>
+          <div className="divide-y divide-dark-400/50">
             {uniqueMistakes.map((m, i) => (
-              <div key={i} className="flex items-start gap-3 py-3">
-                <XCircle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
+              <div key={i} className="flex items-center gap-3 py-2.5">
+                <XCircle size={15} className="text-red-400 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-slate-200 text-sm font-medium">{m.word.engWord}</span>
@@ -695,13 +687,13 @@ function SessionResults({ score, mistakes, totalWords, onRetry, onNew }) {
                       Stage {m.stage}
                     </span>
                   </div>
-                  <p className="text-slate-400 text-sm heb mt-0.5">{m.word.hebWord}</p>
+                  <p className="text-slate-400 text-sm heb">{m.word.hebWord}</p>
                 </div>
                 {m.word.image_url && (
                   <img
                     src={getImageUrl(m.word.image_url)}
                     alt=""
-                    className="w-10 h-10 rounded-lg object-cover border border-dark-400 flex-shrink-0"
+                    className="w-9 h-9 rounded-lg object-cover border border-dark-400 flex-shrink-0"
                     onError={(e) => { e.target.style.display = 'none' }}
                   />
                 )}
@@ -717,7 +709,7 @@ function SessionResults({ score, mistakes, totalWords, onRetry, onNew }) {
 // ── Main StudySession ─────────────────────────────────────────────────────────
 
 export default function StudySession() {
-  const [phase, setPhase] = useState('select')       // select | session | transition | results
+  const [phase, setPhase] = useState('select')
   const [preparedWords, setPreparedWords] = useState([])
   const [stage, setStage] = useState(1)
   const [wordIdx, setWordIdx] = useState(0)
@@ -747,6 +739,7 @@ export default function StudySession() {
     setAnswered(true)
     setSelectedOption(option)
     setIsCorrect(correct)
+    playSound(correct ? 'correct' : 'wrong')
     if (correct) {
       setScore((s) => ({ ...s, correct: s.correct + 1 }))
     } else {
@@ -779,12 +772,8 @@ export default function StudySession() {
     }
   }, [stage])
 
-  // ── Select phase ──────────────────────────────────────────────────────────
-  if (phase === 'select') {
-    return <WordSelector onStart={startSession} />
-  }
+  if (phase === 'select') return <WordSelector onStart={startSession} />
 
-  // ── Transition between stages ─────────────────────────────────────────────
   if (phase === 'transition') {
     return (
       <StageTransition
@@ -796,7 +785,6 @@ export default function StudySession() {
     )
   }
 
-  // ── Results ───────────────────────────────────────────────────────────────
   if (phase === 'results') {
     return (
       <SessionResults
@@ -809,110 +797,67 @@ export default function StudySession() {
     )
   }
 
-  // ── Active session ────────────────────────────────────────────────────────
   if (!currentWord) return null
 
   const progress = ((stage - 1) * preparedWords.length + wordIdx) / (4 * preparedWords.length)
   const stageMeta = STAGE_META.find((s) => s.num === stage)
   const StageIcon = stageMeta?.icon
-
-  // What to show as "correct answer" in feedback
   const correctAnswerHint = [1, 4].includes(stage) ? currentWord.engWord : currentWord.hebWord
   const hintIsHeb = [2, 3].includes(stage)
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5 animate-fade-in">
+    <div className="max-w-2xl mx-auto space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            {StageIcon && <StageIcon size={15} className={stageMeta?.color} />}
-            <span className="font-bold text-slate-100">{stageMeta?.title}</span>
-            <span className="text-slate-600 text-sm hidden sm:inline">· {stageMeta?.subtitle}</span>
-          </div>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Word {wordIdx + 1}/{preparedWords.length} · {score.correct} correct
-          </p>
+        <div className="flex items-center gap-2">
+          {StageIcon && <StageIcon size={14} className={stageMeta?.color} />}
+          <span className="font-semibold text-slate-100 text-sm">{stageMeta?.title}</span>
+          <span className="text-slate-600 text-xs hidden sm:inline">· {stageMeta?.subtitle}</span>
+          <span className="text-slate-500 text-xs">· {wordIdx + 1}/{preparedWords.length}</span>
         </div>
-        <button className="btn-ghost text-sm" onClick={() => setPhase('select')}>
-          Quit
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-slate-500 text-xs">{score.correct} correct</span>
+          <button className="btn-ghost text-xs py-1 px-2" onClick={() => setPhase('select')}>Quit</button>
+        </div>
       </div>
 
       {/* Progress bar */}
-      <div>
-        <div className="flex justify-between text-xs text-slate-600 mb-1">
-          <span>Stage {stage} of 4</span>
-          <span>{Math.round(progress * 100)}%</span>
-        </div>
-        <div className="h-1.5 bg-dark-400 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary rounded-full transition-all duration-500"
-            style={{ width: `${progress * 100}%` }}
-          />
-        </div>
+      <div className="h-1 bg-dark-400 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-primary rounded-full transition-all duration-500"
+          style={{ width: `${progress * 100}%` }}
+        />
       </div>
 
       {/* Stage component */}
-      {stage === 1 && (
-        <Stage1
-          word={currentWord}
-          answered={answered}
-          selectedOption={selectedOption}
-          onAnswer={handleAnswer}
-        />
-      )}
-      {stage === 2 && (
-        <Stage2
-          word={currentWord}
-          answered={answered}
-          selectedOption={selectedOption}
-          onAnswer={handleAnswer}
-        />
-      )}
-      {stage === 3 && (
-        <Stage3
-          word={currentWord}
-          answered={answered}
-          selectedOption={selectedOption}
-          onAnswer={handleAnswer}
-        />
-      )}
-      {stage === 4 && (
-        <Stage4
-          key={`${stage}-${wordIdx}`}
-          word={currentWord}
-          answered={answered}
-          onAnswer={handleAnswer}
-        />
-      )}
+      {stage === 1 && <Stage1 word={currentWord} answered={answered} selectedOption={selectedOption} onAnswer={handleAnswer} />}
+      {stage === 2 && <Stage2 word={currentWord} answered={answered} selectedOption={selectedOption} onAnswer={handleAnswer} />}
+      {stage === 3 && <Stage3 word={currentWord} answered={answered} selectedOption={selectedOption} onAnswer={handleAnswer} />}
+      {stage === 4 && <Stage4 key={`${stage}-${wordIdx}`} word={currentWord} answered={answered} onAnswer={handleAnswer} />}
 
       {/* Feedback + Next button */}
       {answered && (
-        <div className="flex items-center justify-between animate-slide-up">
+        <div className="flex items-center justify-between animate-slide-up py-1">
           <div className="flex items-center gap-2">
             {isCorrect ? (
               <>
-                <CheckCircle size={18} className="text-emerald-400" />
-                <span className="text-emerald-400 font-medium">Correct!</span>
+                <CheckCircle size={16} className="text-emerald-400" />
+                <span className="text-emerald-400 font-medium text-sm">Correct!</span>
               </>
             ) : (
               <>
-                <XCircle size={18} className="text-red-400" />
-                <span className="text-red-400 font-medium">
-                  Answer:{' '}
-                  <span className={hintIsHeb ? 'heb' : ''}>{correctAnswerHint}</span>
+                <XCircle size={16} className="text-red-400" />
+                <span className="text-red-400 font-medium text-sm">
+                  Answer: <span className={hintIsHeb ? 'heb' : ''}>{correctAnswerHint}</span>
                 </span>
               </>
             )}
           </div>
-          <button className="btn-primary flex items-center gap-2" onClick={handleNext}>
+          <button className="btn-primary flex items-center gap-1.5 py-1.5 px-3 text-sm" onClick={handleNext}>
             {wordIdx + 1 >= preparedWords.length
-              ? stage >= 4
-                ? 'See Results'
-                : `Stage ${stage + 1}`
+              ? stage >= 4 ? 'See Results' : `Stage ${stage + 1}`
               : 'Next'}
-            <ArrowRight size={15} />
+            <ArrowRight size={14} />
           </button>
         </div>
       )}
