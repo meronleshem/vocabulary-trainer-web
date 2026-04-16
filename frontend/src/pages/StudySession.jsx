@@ -238,11 +238,48 @@ function Stage4({ word, answered, onAnswer }) {
   const [bank, setBank] = useState(word.stage4Letters)
   const [submitted, setSubmitted] = useState(false)
 
+  // Reset when word changes
   useEffect(() => {
     setBuiltLetters([])
     setBank(word.stage4Letters)
     setSubmitted(false)
   }, [word.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keyboard: letters → add, Backspace → undo, Enter → check
+  useEffect(() => {
+    if (submitted) return
+    const handler = (e) => {
+      if (/^[a-zA-Z]$/.test(e.key)) {
+        const letter = e.key.toLowerCase()
+        setBank((prevBank) => {
+          const idx = prevBank.findIndex((l) => l.letter === letter)
+          if (idx === -1) return prevBank
+          const letterObj = prevBank[idx]
+          setBuiltLetters((prev) => [...prev, letterObj])
+          return prevBank.filter((_, i) => i !== idx)
+        })
+      } else if (e.key === 'Backspace') {
+        e.preventDefault()
+        setBuiltLetters((prev) => {
+          if (prev.length === 0) return prev
+          const last = prev[prev.length - 1]
+          setBank((b) => [...b, last])
+          return prev.slice(0, -1)
+        })
+      } else if (e.key === 'Enter') {
+        setBuiltLetters((prev) => {
+          if (prev.length === 0) return prev
+          const built = prev.map((l) => l.letter).join('')
+          const target = word.engWord.toLowerCase().replace(/[\s-]+/g, '')
+          setSubmitted(true)
+          onAnswer(built === target, built)
+          return prev
+        })
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [submitted, word.engWord, onAnswer])
 
   const addLetter = (letterObj) => {
     if (submitted) return
@@ -346,7 +383,10 @@ function Stage4({ word, answered, onAnswer }) {
 
       {/* Letter bank */}
       <div className="card py-3 px-4">
-        <p className="text-xs text-slate-600 mb-2 text-center uppercase tracking-wider">Letter Bank</p>
+        <p className="text-xs text-slate-600 mb-2 text-center uppercase tracking-wider">
+          Letter Bank
+          <span className="normal-case ml-2 text-slate-700">· type letters · Backspace to undo · Enter to check</span>
+        </p>
         <div className="flex flex-wrap gap-1.5 justify-center">
           {bank.length === 0 ? (
             <span className="text-slate-600 text-sm">All letters used</span>
