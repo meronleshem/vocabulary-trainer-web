@@ -72,16 +72,22 @@ function buildLetterBank(word) {
 }
 
 function prepareSessionData(words) {
-  return words.map((word) => ({
-    ...word,
-    stage1Options: shuffle([word.engWord, ...word.eng_distractors]),
-    stage2Options: shuffle([word.hebWord, ...word.heb_distractors.map((d) => d.hebWord)]),
-    stage3Options: shuffle([
-      { hebWord: word.hebWord, image_url: word.image_url, isCorrect: true },
-      ...word.heb_distractors.map((d) => ({ ...d, isCorrect: false })),
-    ]),
-    stage4Letters: buildLetterBank(word.engWord),
-  }))
+  return words.map((word) => {
+    // Use the other session words as distractors — the user knows these words,
+    // so distinguishing between them is meaningful practice.
+    const distractors = shuffle(words.filter((w) => w.id !== word.id)).slice(0, 2)
+
+    return {
+      ...word,
+      stage1Options: shuffle([word.engWord, ...distractors.map((d) => d.engWord)]),
+      stage2Options: shuffle([word.hebWord, ...distractors.map((d) => d.hebWord)]),
+      stage3Options: shuffle([
+        { hebWord: word.hebWord, image_url: word.image_url, isCorrect: true },
+        ...distractors.map((d) => ({ hebWord: d.hebWord, image_url: d.image_url, isCorrect: false })),
+      ]),
+      stage4Letters: buildLetterBank(word.engWord),
+    }
+  })
 }
 
 const STAGE_META = [
