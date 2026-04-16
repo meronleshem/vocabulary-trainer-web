@@ -11,15 +11,17 @@ import {
   Menu,
   X,
   Sparkles,
+  GraduationCap,
 } from 'lucide-react'
 
 const NAV = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/browse',    icon: Search,          label: 'Browse' },
-  { to: '/study',     icon: Brain,           label: 'Flashcards' },
-  { to: '/quiz',      icon: Trophy,          label: 'Quiz' },
-  { to: '/fill-quiz', icon: PenLine,         label: 'Fill in Blank' },
-  { to: '/books',     icon: Library,         label: 'Books' },
+  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/browse',        icon: Search,          label: 'Browse' },
+  { to: '/study',         icon: Brain,           label: 'Flashcards' },
+  { to: '/study-session', icon: GraduationCap,   label: 'Study Session' },
+  { to: '/quiz',          icon: Trophy,          label: 'Quiz' },
+  { to: '/fill-quiz',     icon: PenLine,         label: 'Fill in Blank' },
+  { to: '/books',         icon: Library,         label: 'Books' },
 ]
 
 function NavItem({ to, icon: Icon, label, onClick }) {

@@ -21,6 +21,7 @@ export const lookupWord = (q) => api.get('/words/lookup', { params: { q } })
 export const getStudyWords = (params) => api.get('/words/study', { params })
 export const getQuiz = (params) => api.get('/words/quiz', { params })
 export const getFillQuiz = (params) => api.get('/words/fill-quiz', { params })
+export const getStudySession = (wordIds) => api.get('/study-session', { params: { word_ids: wordIds } })
 
 // ── Meta ─────────────────────────────────────────────────────────────────────
 export const getStats = () => api.get('/stats')

@@ -415,6 +415,60 @@ def patch_difficulty(word_id: int, body: DifficultyUpdate):
     return {"id": word_id, "difficulty": body.difficulty}
 
 
+# ── Study Session ─────────────────────────────────────────────────────────────
+
+@app.get("/api/study-session")
+def get_study_session(word_ids: List[int] = Query(...)):
+    if len(word_ids) < 2:
+        raise HTTPException(400, "Select at least 2 words")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    placeholders = ",".join(["?"] * len(word_ids))
+    cur.execute(f"SELECT * FROM vocabulary WHERE id IN ({placeholders})", word_ids)
+    words = [dict(r) for r in cur.fetchall()]
+
+    if not words:
+        conn.close()
+        raise HTTPException(404, "No words found")
+
+    # Distractor pool — exclude the selected words
+    cur.execute(
+        f"SELECT id, engWord, hebWord, image_url FROM vocabulary "
+        f"WHERE id NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT 200",
+        word_ids,
+    )
+    pool = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    result = []
+    for word in words:
+        shuffled = random.sample(pool, len(pool))  # fresh shuffle per word
+
+        heb_seen: set = set()
+        heb_distractors = []
+        for p in shuffled:
+            if p["hebWord"] not in heb_seen and p["hebWord"] != word["hebWord"]:
+                heb_distractors.append({"hebWord": p["hebWord"], "image_url": p.get("image_url") or ""})
+                heb_seen.add(p["hebWord"])
+            if len(heb_distractors) == 2:
+                break
+
+        eng_seen: set = set()
+        eng_distractors = []
+        for p in shuffled:
+            if p["engWord"] not in eng_seen and p["engWord"] != word["engWord"]:
+                eng_distractors.append(p["engWord"])
+                eng_seen.add(p["engWord"])
+            if len(eng_distractors) == 2:
+                break
+
+        result.append({**word, "heb_distractors": heb_distractors, "eng_distractors": eng_distractors})
+
+    return result
+
+
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/groups")
