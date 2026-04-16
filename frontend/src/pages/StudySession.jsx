@@ -135,7 +135,7 @@ function Stage1({ word, answered, selectedOption, onAnswer }) {
               answered, opt === word.engWord, opt === selectedOption
             )}`}
           >
-            {opt}
+            <span className="text-slate-500 text-xs mr-1.5">{i + 1}.</span>{opt}
           </button>
         ))}
       </div>
@@ -172,11 +172,11 @@ function Stage2({ word, answered, selectedOption, onAnswer }) {
             key={i}
             disabled={answered}
             onClick={() => onAnswer(opt === word.hebWord, opt)}
-            className={`py-3 px-4 rounded-xl border-2 text-center font-medium heb transition-all duration-200 ${optionCls(
+            className={`py-3 px-4 rounded-xl border-2 text-center font-medium transition-all duration-200 ${optionCls(
               answered, opt === word.hebWord, opt === selectedOption
             )}`}
           >
-            {opt}
+            <span className="text-slate-500 text-xs mr-1.5 not-heb">{i + 1}.</span><span className="heb">{opt}</span>
           </button>
         ))}
       </div>
@@ -212,10 +212,11 @@ function Stage3({ word, answered, selectedOption, onAnswer }) {
             key={i}
             disabled={answered}
             onClick={() => onAnswer(opt.isCorrect, opt.hebWord)}
-            className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all duration-200 ${optionCls(
+            className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all duration-200 relative ${optionCls(
               answered, opt.isCorrect, opt.hebWord === selectedOption
             )}`}
           >
+            <span className="absolute top-1.5 left-2 text-xs text-slate-500 font-medium">{i + 1}</span>
             <img
               src={getImg(opt.image_url)}
               alt=""
@@ -366,66 +367,6 @@ function Stage4({ word, answered, onAnswer }) {
             ))
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Stage Transition ──────────────────────────────────────────────────────────
-
-function StageTransition({ completedStage, nextStage, wordsCount, onContinue }) {
-  const next = STAGE_META.find((s) => s.num === nextStage)
-  const NextIcon = next?.icon
-
-  return (
-    <div className="max-w-md mx-auto text-center space-y-5 animate-fade-in">
-      <div className="card py-10 space-y-5">
-        <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center mx-auto">
-          <CheckCircle size={28} className="text-emerald-400" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold text-slate-100">Stage {completedStage} Complete!</h2>
-          <p className="text-slate-500 text-sm mt-1">Practiced all {wordsCount} words</p>
-        </div>
-
-        {next && (
-          <div className={`rounded-xl border p-3 ${next.bg} ${next.border}`}>
-            <div className="flex items-center justify-center gap-2 mb-1">
-              {NextIcon && <NextIcon size={16} className={next.color} />}
-              <span className={`font-semibold text-sm ${next.color}`}>{next.title}</span>
-            </div>
-            <p className="text-slate-400 text-sm">{next.subtitle}</p>
-          </div>
-        )}
-
-        <button
-          className="btn-primary px-8 py-2 flex items-center gap-2 mx-auto"
-          onClick={onContinue}
-        >
-          {nextStage
-            ? <>Continue to Stage {nextStage} <ArrowRight size={15} /></>
-            : <>See Results <Trophy size={15} /></>}
-        </button>
-      </div>
-
-      {/* Stage progress dots */}
-      <div className="flex items-center justify-center gap-2">
-        {[1, 2, 3, 4].map((s) => (
-          <div key={s} className="flex items-center">
-            <div
-              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
-                s <= completedStage
-                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
-                  : 'bg-dark-500 border-dark-400 text-slate-600'
-              }`}
-            >
-              {s <= completedStage ? '✓' : s}
-            </div>
-            {s < 4 && (
-              <div className={`w-7 h-0.5 mx-1 ${s < completedStage ? 'bg-emerald-500/40' : 'bg-dark-400'}`} />
-            )}
-          </div>
-        ))}
       </div>
     </div>
   )
@@ -755,41 +696,45 @@ export default function StudySession() {
   }, [answered, preparedWords, wordIdx, stage])
 
   const handleNext = useCallback(() => {
+    const reset = () => { setAnswered(false); setSelectedOption(null); setIsCorrect(null) }
     if (wordIdx + 1 >= preparedWords.length) {
-      setPhase('transition')
+      if (stage >= 4) {
+        setPhase('results')
+      } else {
+        setStage((s) => s + 1)
+        setWordIdx(0)
+        reset()
+      }
     } else {
       setWordIdx((i) => i + 1)
-      setAnswered(false)
-      setSelectedOption(null)
-      setIsCorrect(null)
+      reset()
     }
-  }, [wordIdx, preparedWords.length])
+  }, [wordIdx, preparedWords.length, stage])
 
-  const handleTransitionContinue = useCallback(() => {
-    if (stage >= 4) {
-      setPhase('results')
-    } else {
-      setStage((s) => s + 1)
-      setWordIdx(0)
-      setAnswered(false)
-      setSelectedOption(null)
-      setIsCorrect(null)
-      setPhase('session')
+  // Keyboard shortcuts: Space → Next · 1/2/3 → pick option
+  useEffect(() => {
+    if (phase !== 'session') return
+    const handler = (e) => {
+      if (e.key === ' ' && answered) { e.preventDefault(); handleNext(); return }
+      if (!answered && stage !== 4 && ['1', '2', '3'].includes(e.key)) {
+        const idx = Number(e.key) - 1
+        if (stage === 1) {
+          const opt = currentWord?.stage1Options[idx]
+          if (opt !== undefined) handleAnswer(opt === currentWord.engWord, opt)
+        } else if (stage === 2) {
+          const opt = currentWord?.stage2Options[idx]
+          if (opt !== undefined) handleAnswer(opt === currentWord.hebWord, opt)
+        } else if (stage === 3) {
+          const opt = currentWord?.stage3Options[idx]
+          if (opt !== undefined) handleAnswer(opt.isCorrect, opt.hebWord)
+        }
+      }
     }
-  }, [stage])
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [phase, answered, handleNext, handleAnswer, currentWord, stage])
 
   if (phase === 'select') return <WordSelector onStart={startSession} />
-
-  if (phase === 'transition') {
-    return (
-      <StageTransition
-        completedStage={stage}
-        nextStage={stage < 4 ? stage + 1 : null}
-        wordsCount={preparedWords.length}
-        onContinue={handleTransitionContinue}
-      />
-    )
-  }
 
   if (phase === 'results') {
     return (
@@ -860,9 +805,7 @@ export default function StudySession() {
             )}
           </div>
           <button className="btn-primary flex items-center gap-1.5 py-1.5 px-3 text-sm" onClick={handleNext}>
-            {wordIdx + 1 >= preparedWords.length
-              ? stage >= 4 ? 'See Results' : `Stage ${stage + 1}`
-              : 'Next'}
+            {wordIdx + 1 >= preparedWords.length && stage >= 4 ? 'See Results' : 'Next'}
             <ArrowRight size={14} />
           </button>
         </div>
