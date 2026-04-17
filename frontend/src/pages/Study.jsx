@@ -291,10 +291,10 @@ export default function Study() {
             {current.image_url && (
               <>
                 <img
-                  src={getImageUrl(current.image_url)}
+                  src={getImageUrl(current.image_url, current.group_name)}
                   alt={current.engWord}
                   className="w-28 h-28 object-cover rounded-xl border border-dark-400 cursor-zoom-in hover:opacity-90 transition-opacity"
-                  onClick={(e) => { e.stopPropagation(); setLightbox(getImageUrl(current.image_url)) }}
+                  onClick={(e) => { e.stopPropagation(); setLightbox(getImageUrl(current.image_url, current.group_name)) }}
                   onError={(e) => { e.target.style.display = 'none' }}
                 />
                 {lightbox && (

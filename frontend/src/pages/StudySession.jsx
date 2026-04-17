@@ -58,7 +58,7 @@ const shuffle = (arr) => {
 }
 
 const DEFAULT_IMG = '/api/images/default.jpg'
-const getImg = (url) => getImageUrl(url) || DEFAULT_IMG
+const getImg = (url, groupName) => getImageUrl(url, groupName) || DEFAULT_IMG
 
 function buildLetterBank(word) {
   const normalized = word.toLowerCase().replace(/[\s-]+/g, '')
@@ -82,8 +82,8 @@ function prepareSessionData(words) {
       stage1Options: shuffle([word.engWord, ...distractors.map((d) => d.engWord)]),
       stage2Options: shuffle([word.hebWord, ...distractors.map((d) => d.hebWord)]),
       stage3Options: shuffle([
-        { hebWord: word.hebWord, image_url: word.image_url, isCorrect: true },
-        ...distractors.map((d) => ({ hebWord: d.hebWord, image_url: d.image_url, isCorrect: false })),
+        { hebWord: word.hebWord, image_url: word.image_url, group_name: word.group_name, isCorrect: true },
+        ...distractors.map((d) => ({ hebWord: d.hebWord, image_url: d.image_url, group_name: d.group_name, isCorrect: false })),
       ]),
       stage4Letters: buildLetterBank(word.engWord),
     }
@@ -117,7 +117,7 @@ function Stage1({ word, answered, selectedOption, onAnswer }) {
       <div className="card py-5 space-y-3 text-center">
         <p className="text-xs text-slate-500 uppercase tracking-wider">What is the English translation?</p>
         <img
-          src={getImg(word.image_url)}
+          src={getImg(word.image_url, word.group_name)}
           alt=""
           className="mx-auto w-44 h-32 object-contain bg-dark-700 rounded-lg border border-dark-400"
           onError={(e) => { e.target.src = DEFAULT_IMG }}
@@ -218,7 +218,7 @@ function Stage3({ word, answered, selectedOption, onAnswer }) {
           >
             <span className="absolute top-1.5 left-2 text-xs text-slate-500 font-medium">{i + 1}</span>
             <img
-              src={getImg(opt.image_url)}
+              src={getImg(opt.image_url, opt.group_name)}
               alt=""
               className="w-full h-24 object-contain bg-dark-700 rounded-lg border border-dark-400/50"
               onError={(e) => { e.target.src = DEFAULT_IMG }}
@@ -322,7 +322,7 @@ function Stage4({ word, answered, onAnswer }) {
           Spell the English word · {target.length} letters
         </p>
         <img
-          src={getImg(word.image_url)}
+          src={getImg(word.image_url, word.group_name)}
           alt=""
           className="mx-auto w-44 h-32 object-contain bg-dark-700 rounded-lg border border-dark-400"
           onError={(e) => { e.target.src = DEFAULT_IMG }}
@@ -598,7 +598,7 @@ function WordSelector({ onStart }) {
                   {word.image_url && (
                     <div className="w-7 h-7 rounded overflow-hidden border border-dark-400">
                       <img
-                        src={getImageUrl(word.image_url)}
+                        src={getImageUrl(word.image_url, word.group_name)}
                         alt=""
                         className="w-full h-full object-cover"
                         onError={(e) => { e.target.style.display = 'none' }}
@@ -678,7 +678,7 @@ function SessionResults({ score, mistakes, totalWords, onRetry, onNew }) {
                 </div>
                 {m.word.image_url && (
                   <img
-                    src={getImageUrl(m.word.image_url)}
+                    src={getImageUrl(m.word.image_url, m.word.group_name)}
                     alt=""
                     className="w-9 h-9 rounded-lg object-cover border border-dark-400 flex-shrink-0"
                     onError={(e) => { e.target.style.display = 'none' }}

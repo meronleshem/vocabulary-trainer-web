@@ -163,7 +163,7 @@ export default function WordModal({ word, groups, onClose, onSaved }) {
               />
               {form.image_url && !imgError ? (
                 <img
-                  src={getImageUrl(form.image_url)}
+                  src={getImageUrl(form.image_url, form.group_name)}
                   alt="preview"
                   onError={() => setImgError(true)}
                   className="w-14 h-14 rounded-lg object-cover border border-dark-400 flex-shrink-0"
