@@ -304,7 +304,7 @@ export default function FillQuiz() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {selected === q.correct
-                ? <><CheckCircle size={18} className="text-emerald-400" /><span className="text-emerald-400 font-medium">Correct!</span></>
+                ? <><CheckCircle size={18} className="text-emerald-400" /><span className="text-emerald-400 font-medium">Correct! <span className="heb text-slate-400 font-normal">({q.word.hebWord})</span></span></>
                 : <><XCircle    size={18} className="text-red-400"     /><span className="text-red-400 font-medium">The answer was: <span className="font-bold">{q.correct}</span> <span className="heb text-slate-400 font-normal">({q.word.hebWord})</span></span></>
               }
             </div>

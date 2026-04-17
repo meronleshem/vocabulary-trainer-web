@@ -528,6 +528,25 @@ def list_books():
     return sorted(books.values(), key=lambda b: b["book"].lower())
 
 
+@app.put("/api/groups/{group_name}")
+def rename_group(group_name: str, body: dict):
+    new_name = (body.get("new_name") or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=422, detail="new_name is required")
+    conn = get_db()
+    cur = conn.cursor()
+    # Check the new name doesn't already exist
+    cur.execute("SELECT COUNT(*) FROM vocabulary WHERE group_name = ?", (new_name,))
+    if cur.fetchone()[0] > 0:
+        conn.close()
+        raise HTTPException(status_code=409, detail=f'Group "{new_name}" already exists')
+    cur.execute("UPDATE vocabulary SET group_name = ? WHERE group_name = ?", (new_name, group_name))
+    conn.commit()
+    affected = cur.rowcount
+    conn.close()
+    return {"renamed": affected, "old_name": group_name, "new_name": new_name}
+
+
 @app.get("/api/stats")
 def get_stats():
     conn = get_db()

@@ -27,5 +27,6 @@ export const getStudySession = (wordIds) => api.get('/study-session', { params: 
 export const getStats = () => api.get('/stats')
 export const getGroups = () => api.get('/groups')
 export const getBooks = () => api.get('/books')
+export const renameGroup = (oldName, newName) => api.put(`/groups/${encodeURIComponent(oldName)}`, { new_name: newName })
 
 export default api

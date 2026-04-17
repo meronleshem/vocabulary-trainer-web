@@ -21,7 +21,7 @@ const NAV = [
   { to: '/study-session', icon: GraduationCap,   label: 'Study Session' },
   { to: '/quiz',          icon: Trophy,          label: 'Quiz' },
   { to: '/fill-quiz',     icon: PenLine,         label: 'Fill in Blank' },
-  { to: '/books',         icon: Library,         label: 'Books' },
+  { to: '/books',         icon: Library,         label: 'Groups' },
 ]
 
 function NavItem({ to, icon: Icon, label, onClick }) {
