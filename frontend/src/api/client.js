@@ -23,6 +23,9 @@ export const getQuiz = (params) => api.get('/words/quiz', { params })
 export const getFillQuiz = (params) => api.get('/words/fill-quiz', { params })
 export const getStudySession = (wordIds) => api.get('/study-session', { params: { word_ids: wordIds } })
 
+// ── Word Frequency ────────────────────────────────────────────────────────────
+export const getWordFrequency = (params) => api.get('/word-frequency', { params })
+
 // ── Meta ─────────────────────────────────────────────────────────────────────
 export const getStats = () => api.get('/stats')
 export const getGroups = () => api.get('/groups')

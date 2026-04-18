@@ -10,6 +10,14 @@ import { GroupPickerDropdown } from '../components/GroupPicker'
 
 const DIFFICULTIES = ['', 'NEW_WORD', 'EASY', 'MEDIUM', 'HARD']
 
+const FREQ_LEVELS = [
+  { value: 1, label: 'Essential',   color: 'bg-emerald-500' },
+  { value: 2, label: 'Very Common', color: 'bg-blue-500'    },
+  { value: 3, label: 'Common',      color: 'bg-yellow-500'  },
+  { value: 4, label: 'Useful',      color: 'bg-orange-500'  },
+  { value: 5, label: 'Rare',        color: 'bg-red-500'     },
+]
+
 function SortIcon({ col, sortBy, sortDir }) {
   if (sortBy !== col) return <ChevronUp size={14} className="text-slate-600" />
   return sortDir === 'asc'
@@ -28,6 +36,8 @@ export default function Browse() {
   const [search, setSearch] = useState('')
   const [difficulty, setDifficulty] = useState('')
   const [groupName, setGroupName] = useState(() => searchParams.get('group') || '')
+  // Multi-select frequency levels: Set<number>
+  const [freqLevels, setFreqLevels] = useState(() => new Set())
 
   // Pagination
   const [page, setPage] = useState(1)
@@ -52,6 +62,8 @@ export default function Browse() {
         search: search || undefined,
         difficulty: difficulty || undefined,
         group_name: groupName || undefined,
+        // Send each selected level as a repeated query param
+        frequency_level: freqLevels.size > 0 ? [...freqLevels] : undefined,
         page,
         limit: LIMIT,
         sort_by: sortBy,
@@ -61,7 +73,7 @@ export default function Browse() {
     } finally {
       setLoading(false)
     }
-  }, [search, difficulty, groupName, page, sortBy, sortDir])
+  }, [search, difficulty, groupName, freqLevels, page, sortBy, sortDir])
 
   useEffect(() => { fetchWords() }, [fetchWords])
 
@@ -156,6 +168,42 @@ export default function Browse() {
           value={groupName}
           onChange={(val) => { setGroupName(val); setPage(1) }}
         />
+        {/* Frequency level toggles */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {FREQ_LEVELS.map(({ value, label, color }) => {
+            const active = freqLevels.has(value)
+            return (
+              <button
+                key={value}
+                title={`Frequency: ${label}`}
+                onClick={() => {
+                  setFreqLevels((prev) => {
+                    const next = new Set(prev)
+                    next.has(value) ? next.delete(value) : next.add(value)
+                    return next
+                  })
+                  setPage(1)
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  active
+                    ? 'border-transparent text-white ' + color
+                    : 'border-dark-400 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white/60' : color}`} />
+                {label}
+              </button>
+            )
+          })}
+          {freqLevels.size > 0 && (
+            <button
+              onClick={() => { setFreqLevels(new Set()); setPage(1) }}
+              className="text-xs text-slate-500 hover:text-slate-300 px-1 transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Table */}

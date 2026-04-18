@@ -12,6 +12,31 @@ from bs4 import BeautifulSoup
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "vocabulary.db")
 IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "Images")
+WORD_FREQ_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "word_frequency.json")
+
+# ---------------------------------------------------------------------------
+# Word-frequency data — loaded once at startup.
+# Format: { "word": { "rank": int, "frequency_level": int, "frequency_label": str } }
+# ---------------------------------------------------------------------------
+import json as _json
+
+def _load_word_frequency() -> dict:
+    try:
+        with open(WORD_FREQ_PATH, "r", encoding="utf-8") as _f:
+            return _json.load(_f)
+    except Exception:
+        return {}
+
+WORD_FREQ: dict = _load_word_frequency()
+
+# Pre-build a set of words per level for O(1) look-ups: { level: set(words) }
+_FREQ_BY_LEVEL: dict[int, set] = {}
+for _w, _meta in WORD_FREQ.items():
+    _lvl = _meta.get("frequency_level")
+    if _lvl is not None:
+        _FREQ_BY_LEVEL.setdefault(_lvl, set()).add(_w.lower())
+
+FREQ_LABELS = {1: "Essential", 2: "Very Common", 3: "Common", 4: "Useful", 5: "Rare"}
 
 app = FastAPI(title="VocabularyApp API", version="1.0.0")
 
@@ -130,11 +155,49 @@ class DifficultyUpdate(BaseModel):
 
 # ── Words ────────────────────────────────────────────────────────────────────
 
+@app.get("/api/word-frequency")
+def get_word_frequency(
+    frequency_level: List[int] = Query(default=[]),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """
+    Return words from the frequency dictionary, optionally filtered by
+    one or more frequency levels (1–5).  Sorted by rank ascending.
+    """
+    if not WORD_FREQ:
+        raise HTTPException(503, "Word frequency data not available")
+
+    valid_levels = {1, 2, 3, 4, 5}
+    for lvl in frequency_level:
+        if lvl not in valid_levels:
+            raise HTTPException(400, f"Invalid frequency_level: {lvl}. Must be 1–5.")
+
+    # Build the filtered list, sorted by rank
+    results = [
+        {"word": w, **meta}
+        for w, meta in WORD_FREQ.items()
+        if not frequency_level or meta["frequency_level"] in frequency_level
+    ]
+    results.sort(key=lambda x: x["rank"])
+
+    total = len(results)
+    page_items = results[offset : offset + limit]
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "frequency_levels": {k: v for k, v in FREQ_LABELS.items()},
+        "words": page_items,
+    }
+
+
 @app.get("/api/words")
 def list_words(
     search: Optional[str] = None,
     difficulty: Optional[str] = None,
     group_name: Optional[str] = None,
+    frequency_level: List[int] = Query(default=[]),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     sort_by: str = "id",
@@ -157,6 +220,19 @@ def list_words(
         conditions.append("group_name = ?")
         params.append(group_name)
 
+    # Frequency filter — collect the union of all words matching requested levels
+    if frequency_level:
+        freq_words: set = set()
+        for lvl in frequency_level:
+            freq_words |= _FREQ_BY_LEVEL.get(lvl, set())
+        if freq_words:
+            placeholders = ",".join("?" * len(freq_words))
+            conditions.append(f"LOWER(engWord) IN ({placeholders})")
+            params.extend(freq_words)
+        else:
+            # No words match these levels — return empty result immediately
+            return {"total": 0, "page": page, "limit": limit, "words": []}
+
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
     conn = get_db()
@@ -164,10 +240,10 @@ def list_words(
     cur.execute(f"SELECT COUNT(*) FROM vocabulary{where}", params)
     total = cur.fetchone()[0]
 
-    offset = (page - 1) * limit
+    db_offset = (page - 1) * limit
     cur.execute(
         f"SELECT * FROM vocabulary{where} ORDER BY {sort_by} {sort_dir} LIMIT ? OFFSET ?",
-        params + [limit, offset],
+        params + [limit, db_offset],
     )
     words = [dict(r) for r in cur.fetchall()]
     conn.close()
