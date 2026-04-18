@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Upload, ChevronUp, ChevronDown, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { Plus, Search, Upload, ChevronUp, ChevronDown, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { getWords, deleteWord, getGroups, getBooks, patchDifficulty } from '../api/client'
 import { DIFF_LABELS, DIFF_DOT } from '../components/DifficultyBadge'
 import WordModal from '../components/WordModal'
@@ -27,6 +27,7 @@ function SortIcon({ col, sortBy, sortDir }) {
 
 export default function Browse() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [data, setData] = useState({ words: [], total: 0 })
   const [loading, setLoading] = useState(false)
   const [groups, setGroups] = useState([])
@@ -118,6 +119,14 @@ export default function Browse() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
+          {groupName && (
+            <button
+              onClick={() => navigate('/books')}
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 mb-1.5 transition-colors"
+            >
+              <ArrowLeft size={13} /> Back to Groups
+            </button>
+          )}
           <h1 className="text-2xl font-bold text-slate-100">Browse Words</h1>
           <p className="text-slate-500 text-sm mt-0.5">{data.total.toLocaleString()} words</p>
         </div>
@@ -195,14 +204,6 @@ export default function Browse() {
               </button>
             )
           })}
-          {freqLevels.size > 0 && (
-            <button
-              onClick={() => { setFreqLevels(new Set()); setPage(1) }}
-              className="text-xs text-slate-500 hover:text-slate-300 px-1 transition-colors"
-            >
-              Clear
-            </button>
-          )}
         </div>
       </div>
 

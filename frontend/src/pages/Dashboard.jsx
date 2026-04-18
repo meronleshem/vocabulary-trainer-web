@@ -23,6 +23,14 @@ const DIFF_LABELS = {
   NEW_WORD: 'New',
 }
 
+const FREQ_LEVELS = [
+  { level: 1, label: 'Essential',   color: '#10b981' },
+  { level: 2, label: 'Very Common', color: '#3b82f6' },
+  { level: 3, label: 'Common',      color: '#f59e0b' },
+  { level: 4, label: 'Useful',      color: '#f97316' },
+  { level: 5, label: 'Rare',        color: '#ef4444' },
+]
+
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload?.length) {
     return (
@@ -196,30 +204,35 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Progress bar */}
+      {/* Frequency Breakdown */}
       <div className="card">
-        <h2 className="text-base font-semibold text-slate-200 mb-3">Difficulty Breakdown</h2>
+        <h2 className="text-base font-semibold text-slate-200 mb-3">Frequency Breakdown</h2>
         <div className="flex h-4 rounded-full overflow-hidden gap-0.5">
-          {diffData.map((d) => (
-            <div
-              key={d.key}
-              style={{
-                width: `${(d.value / stats.total) * 100}%`,
-                background: DIFF_COLORS[d.key],
-              }}
-              title={`${d.name}: ${d.value}`}
-            />
-          ))}
+          {FREQ_LEVELS.map(({ level, color }) => {
+            const count = stats.by_frequency?.[level] || 0
+            if (!count) return null
+            return (
+              <div
+                key={level ?? 'unknown'}
+                style={{ width: `${(count / stats.total) * 100}%`, background: color }}
+                title={`${FREQ_LEVELS.find(f => f.level === level)?.label}: ${count}`}
+              />
+            )
+          })}
         </div>
         <div className="flex flex-wrap gap-4 mt-3">
-          {diffData.map((d) => (
-            <div key={d.key} className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full" style={{ background: DIFF_COLORS[d.key] }} />
-              <span className="text-xs text-slate-400">
-                {d.name}: {d.value} ({Math.round((d.value / stats.total) * 100)}%)
-              </span>
-            </div>
-          ))}
+          {FREQ_LEVELS.map(({ level, label, color }) => {
+            const count = stats.by_frequency?.[level] || 0
+            if (!count) return null
+            return (
+              <div key={level ?? 'unknown'} className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+                <span className="text-xs text-slate-400">
+                  {label}: {count} ({Math.round((count / stats.total) * 100)}%)
+                </span>
+              </div>
+            )
+          })}
         </div>
       </div>
 

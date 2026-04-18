@@ -220,18 +220,28 @@ def list_words(
         conditions.append("group_name = ?")
         params.append(group_name)
 
-    # Frequency filter — collect the union of all words matching requested levels
+    # Frequency filter — classify each vocabulary word and keep only matches.
+    # Words absent from the frequency file are Rare (level 5).
     if frequency_level:
-        freq_words: set = set()
-        for lvl in frequency_level:
-            freq_words |= _FREQ_BY_LEVEL.get(lvl, set())
-        if freq_words:
-            placeholders = ",".join("?" * len(freq_words))
-            conditions.append(f"LOWER(engWord) IN ({placeholders})")
-            params.extend(freq_words)
-        else:
-            # No words match these levels — return empty result immediately
+        selected = set(frequency_level)
+        conn_tmp = get_db()
+        vocab_words = [
+            r["eng"]
+            for r in conn_tmp.execute("SELECT LOWER(engWord) as eng FROM vocabulary").fetchall()
+        ]
+        conn_tmp.close()
+
+        matching = [
+            w for w in vocab_words
+            if WORD_FREQ.get(w, {}).get("frequency_level", 5) in selected
+        ]
+
+        if not matching:
             return {"total": 0, "page": page, "limit": limit, "words": []}
+
+        placeholders = ",".join("?" * len(matching))
+        conditions.append(f"LOWER(engWord) IN ({placeholders})")
+        params.extend(matching)
 
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -652,10 +662,20 @@ def get_stats():
     cur.execute("SELECT * FROM vocabulary ORDER BY id DESC LIMIT 6")
     recent = [dict(r) for r in cur.fetchall()]
 
+    # Frequency breakdown — cross-reference engWords with word_frequency data
+    cur.execute("SELECT LOWER(engWord) as eng FROM vocabulary")
+    by_frequency: dict = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for row in cur.fetchall():
+        meta = WORD_FREQ.get(row["eng"])
+        # Words not in the frequency list are rank 20001+, which is Rare (level 5)
+        lvl = meta["frequency_level"] if meta else 5
+        by_frequency[lvl] = by_frequency.get(lvl, 0) + 1
+
     conn.close()
     return {
         "total": total,
         "by_difficulty": by_difficulty,
+        "by_frequency": by_frequency,
         "by_book": by_book,
         "recent": recent,
     }
