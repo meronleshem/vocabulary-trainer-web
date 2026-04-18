@@ -112,6 +112,25 @@ export default function Quiz() {
     }
   }
 
+  useEffect(() => {
+    if (phase !== 'quiz') return
+    const handleKey = (e) => {
+      const keyMap = { '1': 0, '2': 1, '3': 2, '4': 3 }
+      const key = e.key
+      if (key in keyMap) {
+        const idx = keyMap[key]
+        if (questions[qIdx]?.options[idx] !== undefined) {
+          handleSelect(questions[qIdx].options[idx])
+        }
+      } else if (e.key === ' ' && answered) {
+        e.preventDefault()
+        goNext()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [phase, qIdx, questions, answered])
+
   const getOptionStyle = (option) => {
     if (!answered) return RESULT_COLORS.default
     const isCorrect = option === questions[qIdx].correct
