@@ -12,10 +12,12 @@ import {
   X,
   Sparkles,
   GraduationCap,
+  TrendingUp,
 } from 'lucide-react'
 
 const NAV = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/progress',      icon: TrendingUp,      label: 'Progress' },
   { to: '/browse',        icon: Search,          label: 'Browse' },
   { to: '/study',         icon: Brain,           label: 'Flashcards' },
   { to: '/study-session', icon: GraduationCap,   label: 'Study Session' },

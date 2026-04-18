@@ -7,6 +7,7 @@ import Quiz from './pages/Quiz'
 import FillQuiz from './pages/FillQuiz'
 import Books from './pages/Books'
 import StudySession from './pages/StudySession'
+import Progress from './pages/Progress'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/fill-quiz" element={<FillQuiz />} />
         <Route path="/books" element={<Books />} />
         <Route path="/study-session" element={<StudySession />} />
+        <Route path="/progress" element={<Progress />} />
       </Routes>
     </Layout>
   )

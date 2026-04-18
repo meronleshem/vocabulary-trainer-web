@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
-import { getFillQuiz, getBooks, patchDifficulty } from '../api/client'
+import { getFillQuiz, getBooks, patchDifficulty, recordAnswer, recordSession } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
@@ -110,6 +110,7 @@ export default function FillQuiz() {
     const correct = option === questions[qIdx].correct
     if (correct) setScore((s) => s + 1)
     setHistory((h) => [...h, { correct, word: questions[qIdx].word, chosen: option, sentence: questions[qIdx].sentence }])
+    recordAnswer(questions[qIdx].word.id, correct).catch(() => {})
   }
 
   const handleDifficultyChange = async (diff) => {
@@ -121,6 +122,7 @@ export default function FillQuiz() {
   const goNext = () => {
     window.speechSynthesis.cancel()
     if (qIdx + 1 >= questions.length) {
+      recordSession('fill_quiz').catch(() => {})
       setPhase('results')
     } else {
       setQIdx((i) => i + 1)

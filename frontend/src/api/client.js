@@ -32,4 +32,10 @@ export const getGroups = () => api.get('/groups')
 export const getBooks = () => api.get('/books')
 export const renameGroup = (oldName, newName) => api.put(`/groups/${encodeURIComponent(oldName)}`, { new_name: newName })
 
+// ── Progress & Rewards ────────────────────────────────────────────────────────
+export const getProgress = () => api.get('/progress')
+export const recordAnswer = (word_id, correct) => api.post('/progress/record-answer', { word_id, correct })
+export const recordSession = (session_type) => api.post('/progress/record-session', { session_type })
+export const patchDailyGoal = (daily_goal) => api.patch('/progress/daily-goal', { daily_goal })
+
 export default api

@@ -1,7 +1,9 @@
 import os
 import re
+import math
 import random
 import sqlite3
+from datetime import date, timedelta
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +40,66 @@ for _w, _meta in WORD_FREQ.items():
 
 FREQ_LABELS = {1: "Essential", 2: "Very Common", 3: "Common", 4: "Useful", 5: "Rare"}
 
+# ── Progress / Rewards configuration ────────────────────────────────────────
+
+LEARN_THRESHOLD = 3       # correct answers needed to mark a word as "learned"
+XP_CORRECT_ANSWER = 2     # XP per correct quiz answer
+XP_NEW_WORD_LEARNED = 10  # XP bonus when a word is newly learned
+XP_SESSION = 20           # XP for completing any session
+
+ACHIEVEMENTS = [
+    {"id": "words_10",    "emoji": "🌱", "label": "First Steps",     "desc": "Learn 10 words",        "xp": 50},
+    {"id": "words_50",    "emoji": "📚", "label": "Getting Started", "desc": "Learn 50 words",        "xp": 100},
+    {"id": "words_100",   "emoji": "💯", "label": "Century",         "desc": "Learn 100 words",       "xp": 200},
+    {"id": "words_500",   "emoji": "⚡", "label": "Word Enthusiast", "desc": "Learn 500 words",       "xp": 500},
+    {"id": "words_1000",  "emoji": "🏆", "label": "Word Master",     "desc": "Learn 1,000 words",     "xp": 1000},
+    {"id": "sessions_5",  "emoji": "🎯", "label": "Committed",       "desc": "Complete 5 sessions",   "xp": 50},
+    {"id": "sessions_10", "emoji": "💪", "label": "Dedicated",       "desc": "Complete 10 sessions",  "xp": 100},
+    {"id": "sessions_50", "emoji": "🏃", "label": "Marathon Learner","desc": "Complete 50 sessions",  "xp": 300},
+    {"id": "streak_3",    "emoji": "🔥", "label": "On a Roll",       "desc": "3-day streak",          "xp": 30},
+    {"id": "streak_7",    "emoji": "⚔️", "label": "Week Warrior",    "desc": "7-day streak",          "xp": 100},
+    {"id": "streak_30",   "emoji": "👑", "label": "Streak Legend",   "desc": "30-day streak",         "xp": 500},
+]
+
+
+def init_progress_db():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.executescript("""
+        CREATE TABLE IF NOT EXISTS user_progress (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            total_xp INTEGER NOT NULL DEFAULT 0,
+            daily_goal INTEGER NOT NULL DEFAULT 10,
+            current_streak INTEGER NOT NULL DEFAULT 0,
+            longest_streak INTEGER NOT NULL DEFAULT 0,
+            last_activity_date TEXT DEFAULT NULL
+        );
+        INSERT OR IGNORE INTO user_progress (id) VALUES (1);
+
+        CREATE TABLE IF NOT EXISTS word_progress (
+            word_id INTEGER PRIMARY KEY,
+            correct_count INTEGER NOT NULL DEFAULT 0,
+            learned INTEGER NOT NULL DEFAULT 0,
+            learned_at TEXT DEFAULT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS daily_activity (
+            date TEXT PRIMARY KEY,
+            words_studied INTEGER NOT NULL DEFAULT 0,
+            sessions_completed INTEGER NOT NULL DEFAULT 0,
+            xp_earned INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS achievements (
+            id TEXT PRIMARY KEY,
+            unlocked_at TEXT NOT NULL,
+            xp_awarded INTEGER NOT NULL DEFAULT 0
+        );
+    """)
+    conn.commit()
+    conn.close()
+
+
 app = FastAPI(title="VocabularyApp API", version="1.0.0")
 
 app.mount("/api/images", StaticFiles(directory=IMAGES_DIR), name="images")
@@ -55,6 +117,11 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+# Initialise progress tables on startup (idempotent).
+# Deferred to after get_db() is defined.
+init_progress_db()
 
 
 def _freq_filter(frequency_level: list[int]) -> tuple[list, list]:
@@ -176,6 +243,19 @@ class WordUpdate(BaseModel):
 
 class DifficultyUpdate(BaseModel):
     difficulty: str
+
+
+class RecordAnswerBody(BaseModel):
+    word_id: int
+    correct: bool
+
+
+class RecordSessionBody(BaseModel):
+    session_type: str  # quiz | fill_quiz | study | study_session
+
+
+class DailyGoalBody(BaseModel):
+    daily_goal: int
 
 
 # ── Words ────────────────────────────────────────────────────────────────────
@@ -533,6 +613,17 @@ def patch_difficulty(word_id: int, body: DifficultyUpdate):
     if cur.rowcount == 0:
         conn.close()
         raise HTTPException(404, "Word not found")
+    # Mark word as learned when explicitly rated (not NEW_WORD)
+    if body.difficulty in {"EASY", "MEDIUM", "HARD"}:
+        today_str = date.today().isoformat()
+        cur.execute("""
+            INSERT INTO word_progress (word_id, correct_count, learned, learned_at)
+            VALUES (?, ?, 1, ?)
+            ON CONFLICT(word_id) DO UPDATE SET
+                learned = 1,
+                learned_at = COALESCE(word_progress.learned_at, excluded.learned_at),
+                correct_count = MAX(word_progress.correct_count, excluded.correct_count)
+        """, (word_id, LEARN_THRESHOLD, today_str))
     conn.commit()
     conn.close()
     return {"id": word_id, "difficulty": body.difficulty}
@@ -716,3 +807,289 @@ def get_stats():
         "by_book": by_book,
         "recent": recent,
     }
+
+
+# ── Progress & Rewards ────────────────────────────────────────────────────────
+
+def _check_achievements(cur, today_str: str, learned_count: int,
+                        sessions_count: int, streak: int) -> list:
+    """Check all achievement conditions and unlock any that are newly met.
+    Returns list of newly unlocked achievement dicts."""
+    cur.execute("SELECT id FROM achievements")
+    already = {r["id"] for r in cur.fetchall()}
+    new_unlocked = []
+
+    thresholds = {
+        "words_10": learned_count >= 10,
+        "words_50": learned_count >= 50,
+        "words_100": learned_count >= 100,
+        "words_500": learned_count >= 500,
+        "words_1000": learned_count >= 1000,
+        "sessions_5": sessions_count >= 5,
+        "sessions_10": sessions_count >= 10,
+        "sessions_50": sessions_count >= 50,
+        "streak_3": streak >= 3,
+        "streak_7": streak >= 7,
+        "streak_30": streak >= 30,
+    }
+
+    for ach in ACHIEVEMENTS:
+        if ach["id"] not in already and thresholds.get(ach["id"], False):
+            cur.execute(
+                "INSERT INTO achievements (id, unlocked_at, xp_awarded) VALUES (?, ?, ?)",
+                (ach["id"], today_str, ach["xp"]),
+            )
+            cur.execute(
+                "UPDATE user_progress SET total_xp = total_xp + ? WHERE id = 1",
+                (ach["xp"],),
+            )
+            new_unlocked.append(ach)
+
+    return new_unlocked
+
+
+@app.post("/api/progress/record-answer")
+def record_answer(body: RecordAnswerBody):
+    """Record one quiz answer. Awards XP, updates streak, checks achievements."""
+    today_str = date.today().isoformat()
+    yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    xp_earned = 0
+    newly_learned = False
+
+    if body.correct:
+        xp_earned += XP_CORRECT_ANSWER
+
+        # Increment correct_count only while not yet learned
+        cur.execute("""
+            INSERT INTO word_progress (word_id, correct_count, learned)
+            VALUES (?, 1, 0)
+            ON CONFLICT(word_id) DO UPDATE SET
+                correct_count = CASE WHEN learned = 0 THEN correct_count + 1 ELSE correct_count END
+        """, (body.word_id,))
+
+        # Check if newly learned
+        cur.execute(
+            "SELECT correct_count, learned FROM word_progress WHERE word_id = ?",
+            (body.word_id,),
+        )
+        wp = cur.fetchone()
+        if wp and wp["correct_count"] >= LEARN_THRESHOLD and not wp["learned"]:
+            newly_learned = True
+            cur.execute(
+                "UPDATE word_progress SET learned = 1, learned_at = ? WHERE word_id = ?",
+                (today_str, body.word_id),
+            )
+            xp_earned += XP_NEW_WORD_LEARNED
+
+    # Update daily activity
+    cur.execute("""
+        INSERT INTO daily_activity (date, words_studied, xp_earned)
+        VALUES (?, 1, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            words_studied = words_studied + 1,
+            xp_earned = xp_earned + ?
+    """, (today_str, xp_earned, xp_earned))
+
+    # Always add XP
+    cur.execute("UPDATE user_progress SET total_xp = total_xp + ? WHERE id = 1", (xp_earned,))
+
+    # Update streak on first activity of a new day
+    cur.execute(
+        "SELECT current_streak, longest_streak, last_activity_date FROM user_progress WHERE id = 1"
+    )
+    up = cur.fetchone()
+    current_streak = up["current_streak"]
+    longest_streak = up["longest_streak"]
+    last_date = up["last_activity_date"]
+
+    if last_date != today_str:
+        if last_date == yesterday_str:
+            current_streak += 1
+        else:
+            current_streak = 1
+        longest_streak = max(longest_streak, current_streak)
+        cur.execute("""
+            UPDATE user_progress SET
+                current_streak = ?,
+                longest_streak = ?,
+                last_activity_date = ?
+            WHERE id = 1
+        """, (current_streak, longest_streak, today_str))
+
+    # Check achievements
+    cur.execute("SELECT COUNT(*) as cnt FROM word_progress WHERE learned = 1")
+    learned_count = cur.fetchone()["cnt"]
+    cur.execute("SELECT COALESCE(SUM(sessions_completed), 0) as cnt FROM daily_activity")
+    sessions_count = cur.fetchone()["cnt"]
+
+    new_achievements = _check_achievements(cur, today_str, learned_count, sessions_count, current_streak)
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "correct": body.correct,
+        "newly_learned": newly_learned,
+        "xp_earned": xp_earned,
+        "new_achievements": new_achievements,
+    }
+
+
+@app.post("/api/progress/record-session")
+def record_session(body: RecordSessionBody):
+    """Record a completed study session. Awards XP and checks achievements."""
+    today_str = date.today().isoformat()
+    yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO daily_activity (date, sessions_completed, xp_earned)
+        VALUES (?, 1, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            sessions_completed = sessions_completed + 1,
+            xp_earned = xp_earned + ?
+    """, (today_str, XP_SESSION, XP_SESSION))
+
+    cur.execute("UPDATE user_progress SET total_xp = total_xp + ? WHERE id = 1", (XP_SESSION,))
+
+    # Update streak on first activity of a new day
+    cur.execute(
+        "SELECT current_streak, longest_streak, last_activity_date FROM user_progress WHERE id = 1"
+    )
+    up = cur.fetchone()
+    current_streak = up["current_streak"]
+    longest_streak = up["longest_streak"]
+    last_date = up["last_activity_date"]
+
+    if last_date != today_str:
+        if last_date == yesterday_str:
+            current_streak += 1
+        else:
+            current_streak = 1
+        longest_streak = max(longest_streak, current_streak)
+        cur.execute("""
+            UPDATE user_progress SET
+                current_streak = ?,
+                longest_streak = ?,
+                last_activity_date = ?
+            WHERE id = 1
+        """, (current_streak, longest_streak, today_str))
+
+    cur.execute("SELECT COUNT(*) as cnt FROM word_progress WHERE learned = 1")
+    learned_count = cur.fetchone()["cnt"]
+    cur.execute("SELECT COALESCE(SUM(sessions_completed), 0) as cnt FROM daily_activity")
+    sessions_count = cur.fetchone()["cnt"]
+
+    new_achievements = _check_achievements(cur, today_str, learned_count, sessions_count, current_streak)
+
+    conn.commit()
+    conn.close()
+
+    return {"xp_earned": XP_SESSION, "new_achievements": new_achievements}
+
+
+@app.get("/api/progress")
+def get_progress():
+    """Return full progress snapshot."""
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM user_progress WHERE id = 1")
+    up = dict(cur.fetchone())
+
+    # Learned word count
+    cur.execute("SELECT COUNT(*) as cnt FROM word_progress WHERE learned = 1")
+    total_learned = cur.fetchone()["cnt"]
+
+    # Per-frequency learned breakdown
+    cur.execute("SELECT LOWER(engWord) as eng, id FROM vocabulary")
+    all_vocab = {r["eng"]: r["id"] for r in cur.fetchall()}
+
+    cur.execute("SELECT word_id FROM word_progress WHERE learned = 1")
+    learned_ids = {r["word_id"] for r in cur.fetchall()}
+
+    by_freq: dict = {
+        lvl: {"learned": 0, "total": 0, "label": FREQ_LABELS[lvl]}
+        for lvl in range(1, 6)
+    }
+    for eng, wid in all_vocab.items():
+        lvl = WORD_FREQ.get(eng, {}).get("frequency_level", 5)
+        by_freq[lvl]["total"] += 1
+        if wid in learned_ids:
+            by_freq[lvl]["learned"] += 1
+
+    # Sessions total
+    cur.execute("SELECT COALESCE(SUM(sessions_completed), 0) as cnt FROM daily_activity")
+    total_sessions = cur.fetchone()["cnt"]
+
+    # Daily activity (last 30 days)
+    cur.execute("""
+        SELECT date, words_studied, sessions_completed, xp_earned
+        FROM daily_activity
+        ORDER BY date DESC
+        LIMIT 30
+    """)
+    daily_activity = [dict(r) for r in cur.fetchall()]
+
+    # Today's activity
+    today_str = date.today().isoformat()
+    cur.execute("SELECT * FROM daily_activity WHERE date = ?", (today_str,))
+    today_row = cur.fetchone()
+    today_activity = (
+        dict(today_row)
+        if today_row
+        else {"date": today_str, "words_studied": 0, "sessions_completed": 0, "xp_earned": 0}
+    )
+
+    # Achievements
+    cur.execute("SELECT id FROM achievements")
+    unlocked_ids = {r["id"] for r in cur.fetchall()}
+    all_achievements = [
+        {**ach, "unlocked": ach["id"] in unlocked_ids}
+        for ach in ACHIEVEMENTS
+    ]
+
+    # Level formula: level = 1 + floor(sqrt(xp / 50))
+    xp = up["total_xp"]
+    level = 1 + int(math.sqrt(xp / 50)) if xp > 0 else 1
+    xp_for_level = 50 * (level - 1) ** 2
+    xp_for_next = 50 * level ** 2
+    xp_progress = xp - xp_for_level
+    xp_needed = xp_for_next - xp_for_level
+
+    conn.close()
+
+    return {
+        "total_xp": xp,
+        "level": level,
+        "xp_progress": xp_progress,
+        "xp_needed": xp_needed,
+        "daily_goal": up["daily_goal"],
+        "current_streak": up["current_streak"],
+        "longest_streak": up["longest_streak"],
+        "last_activity_date": up["last_activity_date"],
+        "total_learned": total_learned,
+        "total_sessions": total_sessions,
+        "by_frequency": by_freq,
+        "daily_activity": daily_activity,
+        "today": today_activity,
+        "achievements": all_achievements,
+    }
+
+
+@app.patch("/api/progress/daily-goal")
+def patch_daily_goal(body: DailyGoalBody):
+    if body.daily_goal < 1 or body.daily_goal > 200:
+        raise HTTPException(400, "daily_goal must be between 1 and 200")
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE user_progress SET daily_goal = ? WHERE id = 1", (body.daily_goal,))
+    conn.commit()
+    conn.close()
+    return {"daily_goal": body.daily_goal}

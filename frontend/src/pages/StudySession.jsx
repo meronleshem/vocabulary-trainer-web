@@ -4,7 +4,7 @@ import {
   ArrowRight, Search, X, Loader2, Eye, Headphones,
   PenLine, Zap, Delete,
 } from 'lucide-react'
-import { getWords, getStudySession, getBooks } from '../api/client'
+import { getWords, getStudySession, getBooks, recordAnswer, recordSession } from '../api/client'
 import { getImageUrl } from '../utils/image'
 import { GroupPickerDropdown } from '../components/GroupPicker'
 import DifficultyBadge from '../components/DifficultyBadge'
@@ -737,12 +737,15 @@ export default function StudySession() {
       setScore((s) => ({ ...s, incorrect: s.incorrect + 1 }))
       setMistakes((m) => [...m, { word: preparedWords[wordIdx], stage }])
     }
+    // Only record on stage 1 to avoid counting the same word 4 times
+    if (stage === 1) recordAnswer(preparedWords[wordIdx].id, correct).catch(() => {})
   }, [answered, preparedWords, wordIdx, stage])
 
   const handleNext = useCallback(() => {
     const reset = () => { setAnswered(false); setSelectedOption(null); setIsCorrect(null) }
     if (wordIdx + 1 >= preparedWords.length) {
       if (stage >= 4) {
+        recordSession('study_session').catch(() => {})
         setPhase('results')
       } else {
         setStage((s) => s + 1)

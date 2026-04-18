@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
-import { getQuiz, getBooks, patchDifficulty } from '../api/client'
+import { getQuiz, getBooks, patchDifficulty, recordAnswer, recordSession } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
@@ -94,6 +94,7 @@ export default function Quiz() {
     const correct = option === questions[qIdx].correct
     if (correct) setScore((s) => s + 1)
     setHistory((h) => [...h, { correct, word: questions[qIdx].word, chosen: option }])
+    recordAnswer(questions[qIdx].word.id, correct).catch(() => {})
   }
 
   const handleDifficultyChange = async (diff) => {
@@ -104,6 +105,7 @@ export default function Quiz() {
 
   const goNext = () => {
     if (qIdx + 1 >= questions.length) {
+      recordSession('quiz').catch(() => {})
       setPhase('results')
     } else {
       setQIdx((i) => i + 1)

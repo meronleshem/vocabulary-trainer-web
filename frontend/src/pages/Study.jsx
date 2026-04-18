@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getImageUrl } from '../utils/image'
 import {
   RefreshCw, ChevronLeft, ChevronRight, RotateCcw,
   CheckCircle, Volume2,
 } from 'lucide-react'
-import { getStudyWords, patchDifficulty, getBooks } from '../api/client'
+import { getStudyWords, patchDifficulty, getBooks, recordAnswer, recordSession } from '../api/client'
 import DifficultyBadge, { DIFF_LABELS } from '../components/DifficultyBadge'
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
@@ -47,6 +47,7 @@ export default function Study() {
   const [session, setSession] = useState(null) // null means not started
   const [marked, setMarked] = useState({}) // id -> difficulty
   const [lightbox, setLightbox] = useState(null)
+  const sessionRecorded = useRef(false)
 
   useEffect(() => {
     getBooks().then((r) => setBooks(r.data))
@@ -73,6 +74,7 @@ export default function Study() {
       setMarked({})
       setSession({ total: res.data.length, startTime: Date.now() })
       setShowSettings(false)
+      sessionRecorded.current = false
     } finally {
       setLoading(false)
     }
@@ -101,6 +103,8 @@ export default function Study() {
     if (!current) return
     setMarked((m) => ({ ...m, [current.id]: diff }))
     await patchDifficulty(current.id, diff)
+    // Marking EASY counts as a correct answer (word is known)
+    if (diff === 'EASY') recordAnswer(current.id, true).catch(() => {})
     goNext()
   }
 
@@ -204,6 +208,11 @@ export default function Study() {
   }
 
   // Finished
+  if (idx >= words.length && !sessionRecorded.current) {
+    sessionRecorded.current = true
+    recordSession('study').catch(() => {})
+  }
+
   if (idx >= words.length) {
     const markedCount = Object.keys(marked).length
     const easy = Object.values(marked).filter((d) => d === 'EASY').length
