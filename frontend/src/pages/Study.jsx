@@ -210,7 +210,7 @@ export default function Study() {
   // Finished
   if (idx >= words.length && !sessionRecorded.current) {
     sessionRecorded.current = true
-    recordSession('study').catch(() => {})
+    recordSession('study', words.map((w) => w.id)).catch(() => {})
   }
 
   if (idx >= words.length) {

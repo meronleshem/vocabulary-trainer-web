@@ -105,7 +105,7 @@ export default function Quiz() {
 
   const goNext = () => {
     if (qIdx + 1 >= questions.length) {
-      recordSession('quiz').catch(() => {})
+      recordSession('quiz', questions.map((q) => q.word.id)).catch(() => {})
       setPhase('results')
     } else {
       setQIdx((i) => i + 1)

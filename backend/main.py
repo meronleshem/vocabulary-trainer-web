@@ -42,7 +42,7 @@ FREQ_LABELS = {1: "Essential", 2: "Very Common", 3: "Common", 4: "Useful", 5: "R
 
 # ── Progress / Rewards configuration ────────────────────────────────────────
 
-LEARN_THRESHOLD = 3       # correct answers needed to mark a word as "learned"
+LEARN_THRESHOLD = 1       # correct answers needed to mark a word as "learned"
 XP_CORRECT_ANSWER = 2     # XP per correct quiz answer
 XP_NEW_WORD_LEARNED = 10  # XP bonus when a word is newly learned
 XP_SESSION = 20           # XP for completing any session
@@ -94,6 +94,12 @@ def init_progress_db():
             id TEXT PRIMARY KEY,
             unlocked_at TEXT NOT NULL,
             xp_awarded INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS daily_words (
+            date TEXT NOT NULL,
+            word_id INTEGER NOT NULL,
+            PRIMARY KEY (date, word_id)
         );
     """)
     conn.commit()
@@ -252,6 +258,7 @@ class RecordAnswerBody(BaseModel):
 
 class RecordSessionBody(BaseModel):
     session_type: str  # quiz | fill_quiz | study | study_session
+    word_ids: List[int] = []  # unique word IDs studied in this session
 
 
 class DailyGoalBody(BaseModel):
@@ -885,12 +892,11 @@ def record_answer(body: RecordAnswerBody):
             )
             xp_earned += XP_NEW_WORD_LEARNED
 
-    # Update daily activity
+    # Update daily XP only (words_studied is tracked per-session for uniqueness)
     cur.execute("""
-        INSERT INTO daily_activity (date, words_studied, xp_earned)
-        VALUES (?, 1, ?)
+        INSERT INTO daily_activity (date, xp_earned)
+        VALUES (?, ?)
         ON CONFLICT(date) DO UPDATE SET
-            words_studied = words_studied + 1,
             xp_earned = xp_earned + ?
     """, (today_str, xp_earned, xp_earned))
 
@@ -941,20 +947,32 @@ def record_answer(body: RecordAnswerBody):
 
 @app.post("/api/progress/record-session")
 def record_session(body: RecordSessionBody):
-    """Record a completed study session. Awards XP and checks achievements."""
+    """Record a completed study session. Awards XP and tracks unique words toward daily goal."""
     today_str = date.today().isoformat()
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
 
     conn = get_db()
     cur = conn.cursor()
 
+    # Insert unique (date, word_id) pairs — duplicates are silently ignored
+    for wid in set(body.word_ids):
+        cur.execute(
+            "INSERT OR IGNORE INTO daily_words (date, word_id) VALUES (?, ?)",
+            (today_str, wid),
+        )
+
+    # Count total unique words studied today
+    cur.execute("SELECT COUNT(*) as cnt FROM daily_words WHERE date = ?", (today_str,))
+    unique_words_today = cur.fetchone()["cnt"]
+
     cur.execute("""
-        INSERT INTO daily_activity (date, sessions_completed, xp_earned)
-        VALUES (?, 1, ?)
+        INSERT INTO daily_activity (date, words_studied, sessions_completed, xp_earned)
+        VALUES (?, ?, 1, ?)
         ON CONFLICT(date) DO UPDATE SET
+            words_studied = ?,
             sessions_completed = sessions_completed + 1,
             xp_earned = xp_earned + ?
-    """, (today_str, XP_SESSION, XP_SESSION))
+    """, (today_str, unique_words_today, XP_SESSION, unique_words_today, XP_SESSION))
 
     cur.execute("UPDATE user_progress SET total_xp = total_xp + ? WHERE id = 1", (XP_SESSION,))
 

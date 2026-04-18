@@ -745,7 +745,7 @@ export default function StudySession() {
     const reset = () => { setAnswered(false); setSelectedOption(null); setIsCorrect(null) }
     if (wordIdx + 1 >= preparedWords.length) {
       if (stage >= 4) {
-        recordSession('study_session').catch(() => {})
+        recordSession('study_session', preparedWords.map((w) => w.id)).catch(() => {})
         setPhase('results')
       } else {
         setStage((s) => s + 1)
