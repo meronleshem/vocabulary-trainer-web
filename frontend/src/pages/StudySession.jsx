@@ -8,6 +8,7 @@ import { getWords, getStudySession, getBooks } from '../api/client'
 import { getImageUrl } from '../utils/image'
 import { GroupPickerDropdown } from '../components/GroupPicker'
 import DifficultyBadge from '../components/DifficultyBadge'
+import FrequencyPicker from '../components/FrequencyPicker'
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -424,6 +425,7 @@ function WordSelector({ onStart }) {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('')
+  const [freqFilter, setFreqFilter] = useState([])
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState([])
@@ -439,6 +441,7 @@ function WordSelector({ onStart }) {
       const res = await getWords({
         search: search || undefined,
         group_name: groupFilter || undefined,
+        frequency_level: freqFilter.length ? freqFilter : undefined,
         page,
         limit: PAGE_SIZE,
         sort_by: 'engWord',
@@ -449,9 +452,9 @@ function WordSelector({ onStart }) {
     } finally {
       setLoading(false)
     }
-  }, [search, groupFilter, page])
+  }, [search, groupFilter, freqFilter, page])
 
-  useEffect(() => { setPage(1) }, [search, groupFilter])
+  useEffect(() => { setPage(1) }, [search, groupFilter, freqFilter])
   useEffect(() => { loadWords() }, [loadWords])
 
   const toggleWord = (word) => {
@@ -536,8 +539,8 @@ function WordSelector({ onStart }) {
       )}
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-48">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             className="input pl-9"
@@ -548,6 +551,7 @@ function WordSelector({ onStart }) {
         </div>
         <GroupPickerDropdown books={books} value={groupFilter} onChange={setGroupFilter} />
       </div>
+      <FrequencyPicker value={freqFilter} onChange={setFreqFilter} />
 
       {/* Word list */}
       <div className="card divide-y divide-dark-400/50 p-0 overflow-hidden">

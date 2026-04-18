@@ -7,6 +7,7 @@ import {
 import { getStudyWords, patchDifficulty, getBooks } from '../api/client'
 import DifficultyBadge, { DIFF_LABELS } from '../components/DifficultyBadge'
 import GroupPicker from '../components/GroupPicker'
+import FrequencyPicker from '../components/FrequencyPicker'
 
 const DIFF_BUTTONS = [
   { key: 'EASY', label: 'Easy', cls: 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/20' },
@@ -37,6 +38,7 @@ export default function Study() {
   const [settings, setSettings] = useState({
     difficulty: '',
     group_names: [],
+    frequency_level: [],
     limit: 20,
     showExamples: true,
   })
@@ -62,6 +64,7 @@ export default function Study() {
       const res = await getStudyWords({
         difficulty: settings.difficulty || undefined,
         group_names: settings.group_names.length ? settings.group_names : undefined,
+        frequency_level: settings.frequency_level.length ? settings.frequency_level : undefined,
         limit: settings.limit,
       })
       setWords(res.data)
@@ -148,6 +151,14 @@ export default function Study() {
               books={books}
               value={settings.group_names}
               onChange={(val) => setSettings((s) => ({ ...s, group_names: val }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Frequency Filter</label>
+            <FrequencyPicker
+              value={settings.frequency_level}
+              onChange={(val) => setSettings((s) => ({ ...s, frequency_level: val }))}
             />
           </div>
 

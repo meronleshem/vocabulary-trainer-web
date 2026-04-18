@@ -57,6 +57,31 @@ def get_db():
     return conn
 
 
+def _freq_filter(frequency_level: list[int]) -> tuple[list, list]:
+    """
+    Return (extra_conditions, extra_params) to restrict a query to the given
+    frequency levels.  Words absent from the frequency file count as Rare (5).
+    Returns (["1=0"], []) when levels are requested but no words match.
+    """
+    if not frequency_level:
+        return [], []
+    selected = set(frequency_level)
+    conn_tmp = get_db()
+    vocab_words = [
+        r["eng"]
+        for r in conn_tmp.execute("SELECT LOWER(engWord) as eng FROM vocabulary").fetchall()
+    ]
+    conn_tmp.close()
+    matching = [
+        w for w in vocab_words
+        if WORD_FREQ.get(w, {}).get("frequency_level", 5) in selected
+    ]
+    if not matching:
+        return ["1=0"], []
+    placeholders = ",".join("?" * len(matching))
+    return [f"LOWER(engWord) IN ({placeholders})"], matching
+
+
 _MORFIX_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
     "Referer": "https://www.google.com/",
@@ -264,6 +289,7 @@ def list_words(
 def get_study_words(
     difficulty: Optional[str] = None,
     group_names: List[str] = Query(default=[]),
+    frequency_level: List[int] = Query(default=[]),
     limit: int = Query(20, ge=1, le=100),
 ):
     conditions, params = [], []
@@ -274,6 +300,9 @@ def get_study_words(
         placeholders = ",".join(["?"] * len(group_names))
         conditions.append(f"group_name IN ({placeholders})")
         params.extend(group_names)
+    freq_cond, freq_params = _freq_filter(frequency_level)
+    conditions.extend(freq_cond)
+    params.extend(freq_params)
 
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     conn = get_db()
@@ -288,6 +317,7 @@ def get_study_words(
 def get_quiz(
     difficulty: Optional[str] = None,
     group_names: List[str] = Query(default=[]),
+    frequency_level: List[int] = Query(default=[]),
     count: int = Query(10, ge=1, le=50),
     direction: str = "eng_to_heb",
 ):
@@ -299,6 +329,9 @@ def get_quiz(
         placeholders = ",".join(["?"] * len(group_names))
         conditions.append(f"group_name IN ({placeholders})")
         params.extend(group_names)
+    freq_cond, freq_params = _freq_filter(frequency_level)
+    conditions.extend(freq_cond)
+    params.extend(freq_params)
 
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     conn = get_db()
@@ -348,6 +381,7 @@ def get_quiz(
 def get_fill_quiz(
     difficulty: Optional[str] = None,
     group_names: List[str] = Query(default=[]),
+    frequency_level: List[int] = Query(default=[]),
     count: int = Query(10, ge=1, le=50),
 ):
     conditions = ["(examples IS NOT NULL AND examples != '')"]
@@ -359,6 +393,9 @@ def get_fill_quiz(
         placeholders = ",".join(["?"] * len(group_names))
         conditions.append(f"group_name IN ({placeholders})")
         params.extend(group_names)
+    freq_cond, freq_params = _freq_filter(frequency_level)
+    conditions.extend(freq_cond)
+    params.extend(freq_params)
 
     where = " WHERE " + " AND ".join(conditions)
     conn = get_db()

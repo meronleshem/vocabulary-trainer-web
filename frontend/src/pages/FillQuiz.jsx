@@ -3,6 +3,7 @@ import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lu
 import { getFillQuiz, getBooks, patchDifficulty } from '../api/client'
 import { DIFF_LABELS } from '../components/DifficultyBadge'
 import GroupPicker from '../components/GroupPicker'
+import FrequencyPicker from '../components/FrequencyPicker'
 
 const RESULT_COLORS = {
   correct: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
@@ -66,7 +67,7 @@ export default function FillQuiz() {
   const [score, setScore] = useState(0)
   const [loading, setLoading] = useState(false)
   const [phase, setPhase] = useState('setup') // setup | quiz | results
-  const [settings, setSettings] = useState({ difficulty: '', group_names: [], count: 10 })
+  const [settings, setSettings] = useState({ difficulty: '', group_names: [], frequency_level: [], count: 10 })
   const [history, setHistory] = useState([])
   const [markedDiff, setMarkedDiff] = useState({})
 
@@ -82,6 +83,7 @@ export default function FillQuiz() {
       const res = await getFillQuiz({
         difficulty: settings.difficulty || undefined,
         group_names: settings.group_names.length ? settings.group_names : undefined,
+        frequency_level: settings.frequency_level.length ? settings.frequency_level : undefined,
         count: settings.count,
       })
       if (!res.data.length) {
@@ -168,6 +170,14 @@ export default function FillQuiz() {
               books={books}
               value={settings.group_names}
               onChange={(val) => setSettings((s) => ({ ...s, group_names: val }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Frequency</label>
+            <FrequencyPicker
+              value={settings.frequency_level}
+              onChange={(val) => setSettings((s) => ({ ...s, frequency_level: val }))}
             />
           </div>
 
