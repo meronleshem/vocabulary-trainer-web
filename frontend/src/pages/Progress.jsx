@@ -207,7 +207,7 @@ export default function Progress() {
                 <tbody>
                   {tracking.map((row) => (
                     <tr key={row.date} className="border-b border-dark-500 hover:bg-dark-500 transition-colors">
-                      <td className="py-2 px-3 text-slate-300">{row.date}</td>
+                      <td className="py-2 px-3 text-slate-300">{row.date.split('-').reverse().join('-')}</td>
                       <td className="py-2 px-3 text-right">
                         <span className="text-emerald-400 font-medium">{row.easy}</span>
                       </td>
