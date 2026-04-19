@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Flame, Trophy, Target, Zap, Star, BookOpen, TrendingUp } from 'lucide-react'
-import { getProgress, patchDailyGoal } from '../api/client'
+import { Flame, Trophy, Target, Zap, Star, BookOpen, TrendingUp, TableProperties } from 'lucide-react'
+import { getProgress, patchDailyGoal, getDifficultyTracking } from '../api/client'
 
 const FREQ_COLORS = {
   1: { bar: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-500/30', bg: 'bg-emerald-500/10' },
@@ -99,6 +99,9 @@ export default function Progress() {
   const [loading, setLoading] = useState(true)
   const [editingGoal, setEditingGoal] = useState(false)
   const [goalInput, setGoalInput] = useState('')
+  const [activeTab, setActiveTab] = useState('overview')
+  const [tracking, setTracking] = useState(null)
+  const [trackingLoading, setTrackingLoading] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -108,6 +111,15 @@ export default function Progress() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (activeTab === 'tracking' && tracking === null) {
+      setTrackingLoading(true)
+      getDifficultyTracking()
+        .then((r) => setTracking(r.data))
+        .finally(() => setTrackingLoading(false))
+    }
+  }, [activeTab, tracking])
 
   const saveGoal = async () => {
     const val = parseInt(goalInput, 10)
@@ -144,6 +156,76 @@ export default function Progress() {
         <h1 className="text-2xl font-bold text-slate-100">Progress</h1>
         <p className="text-slate-500 text-sm mt-1">Track your learning journey</p>
       </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-dark-400">
+        {[
+          { id: 'overview', label: 'Overview', icon: TrendingUp },
+          { id: 'tracking', label: 'Difficulty Tracking', icon: TableProperties },
+        ].map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === id
+                ? 'border-primary text-primary-light'
+                : 'border-transparent text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tracking tab */}
+      {activeTab === 'tracking' && (
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <TableProperties size={16} className="text-primary-light" />
+            <span className="text-sm font-semibold text-slate-200">Words Ranked per Day</span>
+          </div>
+          {trackingLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : !tracking || tracking.length === 0 ? (
+            <p className="text-slate-500 text-sm text-center py-8">
+              No ranking data yet. Rate some words as Easy or Medium to see history here.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-dark-400">
+                    <th className="text-left py-2 px-3 text-slate-400 font-medium">Date</th>
+                    <th className="text-right py-2 px-3 text-emerald-400 font-medium">Easy</th>
+                    <th className="text-right py-2 px-3 text-amber-400 font-medium">Medium</th>
+                    <th className="text-right py-2 px-3 text-slate-400 font-medium">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tracking.map((row) => (
+                    <tr key={row.date} className="border-b border-dark-500 hover:bg-dark-500 transition-colors">
+                      <td className="py-2 px-3 text-slate-300">{row.date}</td>
+                      <td className="py-2 px-3 text-right">
+                        <span className="text-emerald-400 font-medium">{row.easy}</span>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <span className="text-amber-400 font-medium">{row.medium}</span>
+                      </td>
+                      <td className="py-2 px-3 text-right text-slate-400">{row.easy + row.medium}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Overview tab */}
+      {activeTab === 'overview' && (<>
 
       {/* Level + XP + Streak row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -285,6 +367,7 @@ export default function Progress() {
           ))}
         </div>
       </div>
+      </>)}
     </div>
   )
 }

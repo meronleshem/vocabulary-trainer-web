@@ -4,8 +4,8 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
-import { BookOpen, Brain, Trophy, Layers, ArrowRight, Flame, Zap, Target } from 'lucide-react'
-import { getStats, getProgress } from '../api/client'
+import { BookOpen, Brain, Trophy, Layers, ArrowRight } from 'lucide-react'
+import { getStats } from '../api/client'
 import StatsCard from '../components/StatsCard'
 import DifficultyBadge from '../components/DifficultyBadge'
 
@@ -45,12 +45,11 @@ const CustomTooltip = ({ active, payload }) => {
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
-  const [progress, setProgress] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([getStats(), getProgress()])
-      .then(([s, p]) => { setStats(s.data); setProgress(p.data) })
+    getStats()
+      .then((s) => setStats(s.data))
       .finally(() => setLoading(false))
   }, [])
 
@@ -99,62 +98,6 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-slate-100">Dashboard</h1>
         <p className="text-slate-500 text-sm mt-1">Your vocabulary progress at a glance</p>
       </div>
-
-      {/* Progress strip */}
-      {progress && (
-        <Link
-          to="/progress"
-          className="card border border-dark-400 hover:border-primary/40 transition-colors group"
-        >
-          <div className="flex flex-wrap items-center gap-4 sm:gap-8">
-            {/* Streak */}
-            <div className="flex items-center gap-2">
-              <Flame size={18} className={progress.current_streak > 0 ? 'text-orange-400' : 'text-slate-600'} />
-              <div>
-                <p className="text-lg font-bold text-slate-100 leading-none">{progress.current_streak}</p>
-                <p className="text-xs text-slate-500">day streak</p>
-              </div>
-            </div>
-            {/* XP / Level */}
-            <div className="flex items-center gap-2">
-              <Zap size={18} className="text-primary-light" />
-              <div>
-                <p className="text-lg font-bold text-slate-100 leading-none">Level {progress.level}</p>
-                <p className="text-xs text-slate-500">{progress.total_xp.toLocaleString()} XP</p>
-              </div>
-            </div>
-            {/* Words learned */}
-            <div className="flex items-center gap-2">
-              <Trophy size={18} className="text-emerald-400" />
-              <div>
-                <p className="text-lg font-bold text-slate-100 leading-none">{progress.total_learned.toLocaleString()}</p>
-                <p className="text-xs text-slate-500">words learned</p>
-              </div>
-            </div>
-            {/* Daily goal */}
-            <div className="flex-1 min-w-40">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
-                  <Target size={13} className="text-primary-light" />
-                  <span className="text-xs text-slate-400">Today's goal</span>
-                </div>
-                <span className="text-xs text-slate-500">
-                  {progress.today.words_studied} / {progress.daily_goal}
-                </span>
-              </div>
-              <div className="h-1.5 bg-dark-400 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    progress.today.words_studied >= progress.daily_goal ? 'bg-emerald-500' : 'bg-primary'
-                  }`}
-                  style={{ width: `${Math.min(100, Math.round((progress.today.words_studied / progress.daily_goal) * 100))}%` }}
-                />
-              </div>
-            </div>
-            <ArrowRight size={14} className="text-slate-600 group-hover:text-slate-400 transition-colors ml-auto hidden sm:block" />
-          </div>
-        </Link>
-      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

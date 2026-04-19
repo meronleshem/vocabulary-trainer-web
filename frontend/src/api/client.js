@@ -37,5 +37,6 @@ export const getProgress = () => api.get('/progress')
 export const recordAnswer = (word_id, correct) => api.post('/progress/record-answer', { word_id, correct })
 export const recordSession = (session_type, word_ids = []) => api.post('/progress/record-session', { session_type, word_ids })
 export const patchDailyGoal = (daily_goal) => api.patch('/progress/daily-goal', { daily_goal })
+export const getDifficultyTracking = () => api.get('/progress/difficulty-tracking')
 
 export default api

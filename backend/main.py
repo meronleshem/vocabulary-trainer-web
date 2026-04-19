@@ -101,6 +101,13 @@ def init_progress_db():
             word_id INTEGER NOT NULL,
             PRIMARY KEY (date, word_id)
         );
+
+        CREATE TABLE IF NOT EXISTS difficulty_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            word_id INTEGER NOT NULL,
+            difficulty TEXT NOT NULL
+        );
     """)
     conn.commit()
     conn.close()
@@ -620,9 +627,14 @@ def patch_difficulty(word_id: int, body: DifficultyUpdate):
     if cur.rowcount == 0:
         conn.close()
         raise HTTPException(404, "Word not found")
+    today_str = date.today().isoformat()
+    # Log every difficulty change to history
+    cur.execute(
+        "INSERT INTO difficulty_history (date, word_id, difficulty) VALUES (?, ?, ?)",
+        (today_str, word_id, body.difficulty),
+    )
     # Mark word as learned when explicitly rated (not NEW_WORD)
     if body.difficulty in {"EASY", "MEDIUM", "HARD"}:
-        today_str = date.today().isoformat()
         cur.execute("""
             INSERT INTO word_progress (word_id, correct_count, learned, learned_at)
             VALUES (?, ?, 1, ?)
@@ -1111,3 +1123,23 @@ def patch_daily_goal(body: DailyGoalBody):
     conn.commit()
     conn.close()
     return {"daily_goal": body.daily_goal}
+
+
+@app.get("/api/progress/difficulty-tracking")
+def get_difficulty_tracking():
+    """Return per-day counts of words rated EASY or MEDIUM."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            date,
+            SUM(CASE WHEN difficulty = 'EASY'   THEN 1 ELSE 0 END) AS easy,
+            SUM(CASE WHEN difficulty = 'MEDIUM' THEN 1 ELSE 0 END) AS medium
+        FROM difficulty_history
+        WHERE difficulty IN ('EASY', 'MEDIUM')
+        GROUP BY date
+        ORDER BY date DESC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
