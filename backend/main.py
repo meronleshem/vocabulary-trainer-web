@@ -3,7 +3,7 @@ import re
 import math
 import random
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -79,15 +79,19 @@ def init_progress_db():
         CREATE TABLE IF NOT EXISTS word_progress (
             word_id INTEGER PRIMARY KEY,
             correct_count INTEGER NOT NULL DEFAULT 0,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
             learned INTEGER NOT NULL DEFAULT 0,
-            learned_at TEXT DEFAULT NULL
+            learned_at TEXT DEFAULT NULL,
+            last_attempt_date TEXT DEFAULT NULL
         );
 
         CREATE TABLE IF NOT EXISTS daily_activity (
             date TEXT PRIMARY KEY,
             words_studied INTEGER NOT NULL DEFAULT 0,
             sessions_completed INTEGER NOT NULL DEFAULT 0,
-            xp_earned INTEGER NOT NULL DEFAULT 0
+            xp_earned INTEGER NOT NULL DEFAULT 0,
+            correct_answers INTEGER NOT NULL DEFAULT 0,
+            total_answers INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS achievements (
@@ -108,7 +112,31 @@ def init_progress_db():
             word_id INTEGER NOT NULL,
             difficulty TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_type TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            word_count INTEGER NOT NULL DEFAULT 0,
+            correct_count INTEGER NOT NULL DEFAULT 0,
+            incorrect_count INTEGER NOT NULL DEFAULT 0,
+            duration_seconds INTEGER DEFAULT NULL
+        );
     """)
+    # Migrate existing databases — add columns that may not exist yet.
+    # SQLite does not support ADD COLUMN IF NOT EXISTS, so we try each and ignore errors.
+    migrations = [
+        "ALTER TABLE word_progress ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE word_progress ADD COLUMN last_attempt_date TEXT DEFAULT NULL",
+        "ALTER TABLE daily_activity ADD COLUMN correct_answers INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_activity ADD COLUMN total_answers INTEGER NOT NULL DEFAULT 0",
+    ]
+    for sql in migrations:
+        try:
+            cur.execute(sql)
+        except Exception:
+            pass  # Column already exists
     conn.commit()
     conn.close()
 
@@ -266,6 +294,9 @@ class RecordAnswerBody(BaseModel):
 class RecordSessionBody(BaseModel):
     session_type: str  # quiz | fill_quiz | study | study_session
     word_ids: List[int] = []  # unique word IDs studied in this session
+    duration_seconds: Optional[int] = None
+    correct_count: int = 0
+    incorrect_count: int = 0
 
 
 class DailyGoalBody(BaseModel):
@@ -879,15 +910,23 @@ def record_answer(body: RecordAnswerBody):
     xp_earned = 0
     newly_learned = False
 
+    # Always track the attempt (correct or wrong)
+    cur.execute("""
+        INSERT INTO word_progress (word_id, correct_count, attempt_count, learned, last_attempt_date)
+        VALUES (?, 0, 1, 0, ?)
+        ON CONFLICT(word_id) DO UPDATE SET
+            attempt_count = attempt_count + 1,
+            last_attempt_date = excluded.last_attempt_date
+    """, (body.word_id, today_str))
+
     if body.correct:
         xp_earned += XP_CORRECT_ANSWER
 
         # Increment correct_count only while not yet learned
         cur.execute("""
-            INSERT INTO word_progress (word_id, correct_count, learned)
-            VALUES (?, 1, 0)
-            ON CONFLICT(word_id) DO UPDATE SET
-                correct_count = CASE WHEN learned = 0 THEN correct_count + 1 ELSE correct_count END
+            UPDATE word_progress
+            SET correct_count = correct_count + 1
+            WHERE word_id = ? AND learned = 0
         """, (body.word_id,))
 
         # Check if newly learned
@@ -904,13 +943,16 @@ def record_answer(body: RecordAnswerBody):
             )
             xp_earned += XP_NEW_WORD_LEARNED
 
-    # Update daily XP only (words_studied is tracked per-session for uniqueness)
+    # Update daily XP + accuracy counters
+    correct_int = 1 if body.correct else 0
     cur.execute("""
-        INSERT INTO daily_activity (date, xp_earned)
-        VALUES (?, ?)
+        INSERT INTO daily_activity (date, xp_earned, correct_answers, total_answers)
+        VALUES (?, ?, ?, 1)
         ON CONFLICT(date) DO UPDATE SET
-            xp_earned = xp_earned + ?
-    """, (today_str, xp_earned, xp_earned))
+            xp_earned = xp_earned + excluded.xp_earned,
+            correct_answers = correct_answers + excluded.correct_answers,
+            total_answers = total_answers + 1
+    """, (today_str, xp_earned, correct_int))
 
     # Always add XP
     cur.execute("UPDATE user_progress SET total_xp = total_xp + ? WHERE id = 1", (xp_earned,))
@@ -962,9 +1004,24 @@ def record_session(body: RecordSessionBody):
     """Record a completed study session. Awards XP and tracks unique words toward daily goal."""
     today_str = date.today().isoformat()
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now_str = now.isoformat()
 
     conn = get_db()
     cur = conn.cursor()
+
+    # Insert into sessions table
+    word_count = len(set(body.word_ids))
+    started_at = (
+        (now - timedelta(seconds=body.duration_seconds)).isoformat()
+        if body.duration_seconds else now_str
+    )
+    cur.execute("""
+        INSERT INTO sessions
+            (session_type, started_at, ended_at, word_count, correct_count, incorrect_count, duration_seconds)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (body.session_type, started_at, now_str, word_count,
+          body.correct_count, body.incorrect_count, body.duration_seconds))
 
     # Insert unique (date, word_id) pairs — duplicates are silently ignored
     for wid in set(body.word_ids):
@@ -1127,21 +1184,98 @@ def patch_daily_goal(body: DailyGoalBody):
 
 @app.get("/api/progress/difficulty-tracking")
 def get_difficulty_tracking():
-    """Return per-day counts of words rated EASY or MEDIUM, plus words studied."""
+    """Return enriched per-day history: study counts, accuracy, session time, ranked words."""
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
         SELECT
-            d.date,
-            SUM(CASE WHEN d.difficulty = 'EASY'   THEN 1 ELSE 0 END) AS easy,
-            SUM(CASE WHEN d.difficulty = 'MEDIUM' THEN 1 ELSE 0 END) AS medium,
-            COALESCE(a.words_studied, 0) AS words_studied
-        FROM difficulty_history d
-        LEFT JOIN daily_activity a ON a.date = d.date
-        WHERE d.difficulty IN ('EASY', 'MEDIUM')
-        GROUP BY d.date
-        ORDER BY d.date DESC
+            da.date,
+            da.words_studied,
+            da.correct_answers,
+            da.total_answers,
+            CASE WHEN da.total_answers > 0
+                 THEN ROUND(CAST(da.correct_answers AS FLOAT) / da.total_answers * 100)
+                 ELSE NULL END AS accuracy_pct,
+            COALESCE(dh.easy,   0) AS easy,
+            COALESCE(dh.medium, 0) AS medium,
+            COALESCE(s.total_duration, 0) AS total_duration_seconds,
+            COALESCE(s.session_count,  0) AS session_count
+        FROM daily_activity da
+        LEFT JOIN (
+            SELECT date,
+                   SUM(CASE WHEN difficulty = 'EASY'   THEN 1 ELSE 0 END) AS easy,
+                   SUM(CASE WHEN difficulty = 'MEDIUM' THEN 1 ELSE 0 END) AS medium
+            FROM difficulty_history
+            WHERE difficulty IN ('EASY', 'MEDIUM')
+            GROUP BY date
+        ) dh ON dh.date = da.date
+        LEFT JOIN (
+            SELECT DATE(started_at) AS date,
+                   SUM(COALESCE(duration_seconds, 0)) AS total_duration,
+                   COUNT(*) AS session_count
+            FROM sessions
+            GROUP BY DATE(started_at)
+        ) s ON s.date = da.date
+        ORDER BY da.date DESC
+        LIMIT 60
     """)
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return rows
+
+
+@app.get("/api/progress/weak-words")
+def get_weak_words():
+    """Return words with accuracy below 60% and at least 3 attempts."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            v.id, v.engWord, v.hebWord, v.difficulty, v.group_name,
+            wp.correct_count,
+            wp.attempt_count,
+            ROUND(CAST(wp.correct_count AS FLOAT) / wp.attempt_count * 100) AS accuracy_pct,
+            wp.last_attempt_date
+        FROM word_progress wp
+        JOIN vocabulary v ON v.id = wp.word_id
+        WHERE wp.attempt_count >= 3
+          AND CAST(wp.correct_count AS FLOAT) / wp.attempt_count < 0.6
+        ORDER BY CAST(wp.correct_count AS FLOAT) / wp.attempt_count ASC
+        LIMIT 30
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+@app.get("/api/progress/trends")
+def get_trends(period: str = "weekly"):
+    """Return weekly or monthly aggregated activity."""
+    conn = get_db()
+    cur = conn.cursor()
+    if period == "monthly":
+        group_expr = "strftime('%Y-%m', date)"
+        limit = 6
+    else:
+        group_expr = "strftime('%Y-W%W', date)"
+        limit = 12
+    cur.execute(f"""
+        SELECT
+            {group_expr} AS period,
+            MIN(date) AS period_start,
+            SUM(words_studied)    AS words,
+            SUM(sessions_completed) AS sessions,
+            SUM(xp_earned)        AS xp,
+            SUM(correct_answers)  AS correct_answers,
+            SUM(total_answers)    AS total_answers,
+            CASE WHEN SUM(total_answers) > 0
+                 THEN ROUND(CAST(SUM(correct_answers) AS FLOAT) / SUM(total_answers) * 100)
+                 ELSE NULL END AS accuracy_pct
+        FROM daily_activity
+        GROUP BY {group_expr}
+        ORDER BY period DESC
+        LIMIT {limit}
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return list(reversed(rows))  # chronological order for charts

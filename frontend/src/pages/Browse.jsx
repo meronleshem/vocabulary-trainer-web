@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Plus, Search, Upload, ChevronUp, ChevronDown, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { getWords, deleteWord, getGroups, getBooks, patchDifficulty } from '../api/client'
+import { getImageUrl } from '../utils/image'
 import { DIFF_LABELS, DIFF_DOT } from '../components/DifficultyBadge'
 import WordModal from '../components/WordModal'
 import QuickAddModal from '../components/QuickAddModal'
@@ -260,6 +261,16 @@ export default function Browse() {
                       <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${DIFF_DOT[word.difficulty] || 'bg-slate-500'}`} />
                         {word.engWord}
+                        {word.image_url && (
+                          <div className="w-7 h-7 rounded overflow-hidden border border-dark-400 flex-shrink-0">
+                            <img
+                              src={getImageUrl(word.image_url, word.group_name)}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => { e.target.style.display = 'none' }}
+                            />
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-300 heb">{word.hebWord}</td>

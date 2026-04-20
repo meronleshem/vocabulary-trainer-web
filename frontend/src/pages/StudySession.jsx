@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Volume2, CheckCircle, XCircle, Trophy, RefreshCw,
   ArrowRight, Search, X, Loader2, Eye, Headphones,
@@ -709,6 +709,7 @@ export default function StudySession() {
   const [isCorrect, setIsCorrect] = useState(null)
   const [score, setScore] = useState({ correct: 0, incorrect: 0 })
   const [mistakes, setMistakes] = useState([])
+  const sessionStartRef = useRef(null)
 
   const currentWord = preparedWords[wordIdx]
 
@@ -722,6 +723,7 @@ export default function StudySession() {
     setIsCorrect(null)
     setScore({ correct: 0, incorrect: 0 })
     setMistakes([])
+    sessionStartRef.current = Date.now()
     setPhase('session')
   }, [])
 
@@ -745,7 +747,14 @@ export default function StudySession() {
     const reset = () => { setAnswered(false); setSelectedOption(null); setIsCorrect(null) }
     if (wordIdx + 1 >= preparedWords.length) {
       if (stage >= 4) {
-        recordSession('study_session', preparedWords.map((w) => w.id)).catch(() => {})
+        const durationSeconds = sessionStartRef.current
+          ? Math.round((Date.now() - sessionStartRef.current) / 1000)
+          : undefined
+        recordSession('study_session', preparedWords.map((w) => w.id), {
+          duration_seconds: durationSeconds,
+          correct_count: score.correct,
+          incorrect_count: score.incorrect,
+        }).catch(() => {})
         setPhase('results')
       } else {
         setStage((s) => s + 1)
