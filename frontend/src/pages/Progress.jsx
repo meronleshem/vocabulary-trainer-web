@@ -201,7 +201,8 @@ export default function Progress() {
                     <th className="text-left py-2 px-3 text-slate-400 font-medium">Date</th>
                     <th className="text-right py-2 px-3 text-emerald-400 font-medium">Easy</th>
                     <th className="text-right py-2 px-3 text-amber-400 font-medium">Medium</th>
-                    <th className="text-right py-2 px-3 text-slate-400 font-medium">Total</th>
+                    <th className="text-right py-2 px-3 text-slate-400 font-medium">Ranked</th>
+                    <th className="text-right py-2 px-3 text-primary-light font-medium">Studied</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -215,6 +216,9 @@ export default function Progress() {
                         <span className="text-amber-400 font-medium">{row.medium}</span>
                       </td>
                       <td className="py-2 px-3 text-right text-slate-400">{row.easy + row.medium}</td>
+                      <td className="py-2 px-3 text-right">
+                        <span className="text-primary-light font-medium">{row.words_studied}</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

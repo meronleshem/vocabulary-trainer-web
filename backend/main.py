@@ -1127,18 +1127,20 @@ def patch_daily_goal(body: DailyGoalBody):
 
 @app.get("/api/progress/difficulty-tracking")
 def get_difficulty_tracking():
-    """Return per-day counts of words rated EASY or MEDIUM."""
+    """Return per-day counts of words rated EASY or MEDIUM, plus words studied."""
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
         SELECT
-            date,
-            SUM(CASE WHEN difficulty = 'EASY'   THEN 1 ELSE 0 END) AS easy,
-            SUM(CASE WHEN difficulty = 'MEDIUM' THEN 1 ELSE 0 END) AS medium
-        FROM difficulty_history
-        WHERE difficulty IN ('EASY', 'MEDIUM')
-        GROUP BY date
-        ORDER BY date DESC
+            d.date,
+            SUM(CASE WHEN d.difficulty = 'EASY'   THEN 1 ELSE 0 END) AS easy,
+            SUM(CASE WHEN d.difficulty = 'MEDIUM' THEN 1 ELSE 0 END) AS medium,
+            COALESCE(a.words_studied, 0) AS words_studied
+        FROM difficulty_history d
+        LEFT JOIN daily_activity a ON a.date = d.date
+        WHERE d.difficulty IN ('EASY', 'MEDIUM')
+        GROUP BY d.date
+        ORDER BY d.date DESC
     """)
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()

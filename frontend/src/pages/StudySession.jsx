@@ -749,6 +749,7 @@ export default function StudySession() {
         setPhase('results')
       } else {
         setStage((s) => s + 1)
+        setPreparedWords((words) => shuffle(words))
         setWordIdx(0)
         reset()
       }
