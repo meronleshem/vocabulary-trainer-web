@@ -1,21 +1,16 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { DIFF_LABELS, DIFF_DOT } from './DifficultyBadge'
 
-const LEVELS = [
-  { value: 1, label: 'Essential',   dot: 'bg-emerald-500' },
-  { value: 2, label: 'Very Common', dot: 'bg-blue-500'    },
-  { value: 3, label: 'Common',      dot: 'bg-yellow-500'  },
-  { value: 4, label: 'Useful',      dot: 'bg-orange-500'  },
-  { value: 5, label: 'Rare',        dot: 'bg-red-500'     },
-]
+const DIFFS = ['NEW_WORD', 'EASY', 'MEDIUM', 'HARD']
 
-export default function FrequencyPicker({ value = [], onChange }) {
+export default function DifficultyPicker({ value = [], onChange }) {
   const [open, setOpen] = useState(false)
   const isAll = value.length === 0
 
-  const toggle = (level) => {
-    if (value.includes(level)) onChange(value.filter((v) => v !== level))
-    else onChange([...value, level])
+  const toggle = (d) => {
+    if (value.includes(d)) onChange(value.filter((x) => x !== d))
+    else onChange([...value, d])
   }
 
   return (
@@ -28,13 +23,12 @@ export default function FrequencyPicker({ value = [], onChange }) {
       >
         <div className="flex items-center gap-2">
           {isAll ? (
-            <span className="text-slate-300">All frequencies</span>
+            <span className="text-slate-300">All difficulties</span>
           ) : (
             <div className="flex items-center gap-1.5">
-              {value.map((lvl) => {
-                const dot = LEVELS.find((l) => l.value === lvl)?.dot
-                return <span key={lvl} className={`w-2 h-2 rounded-full ${dot}`} />
-              })}
+              {value.map((d) => (
+                <span key={d} className={`w-2 h-2 rounded-full ${DIFF_DOT[d]}`} />
+              ))}
               <span className="text-primary-light ml-0.5">{value.length} selected</span>
             </div>
           )}
@@ -57,20 +51,20 @@ export default function FrequencyPicker({ value = [], onChange }) {
           >
             All
           </button>
-          {LEVELS.map(({ value: lvl, label, dot }) => {
-            const active = value.includes(lvl)
+          {DIFFS.map((d) => {
+            const active = value.includes(d)
             return (
               <button
-                key={lvl}
+                key={d}
                 type="button"
-                onClick={() => toggle(lvl)}
+                onClick={() => toggle(d)}
                 className={`w-full text-left px-3 py-1.5 flex items-center justify-between border-t border-dark-400 transition-colors ${
                   active ? 'bg-primary/15 text-primary-light' : 'text-slate-400 hover:bg-dark-400 hover:text-slate-300'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
-                  <span>{label}</span>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${DIFF_DOT[d]}`} />
+                  <span>{DIFF_LABELS[d]}</span>
                 </div>
                 <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
                   active ? 'bg-primary border-primary' : 'border-slate-600'

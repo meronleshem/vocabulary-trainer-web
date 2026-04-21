@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
 import { getFillQuiz, getBooks, patchDifficulty, recordSession } from '../api/client'
-import { DIFF_LABELS } from '../components/DifficultyBadge'
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
+import DifficultyPicker from '../components/DifficultyPicker'
 
 const RESULT_COLORS = {
   correct: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
@@ -67,7 +67,7 @@ export default function FillQuiz() {
   const [score, setScore] = useState(0)
   const [loading, setLoading] = useState(false)
   const [phase, setPhase] = useState('setup') // setup | quiz | results
-  const [settings, setSettings] = useState({ difficulty: '', group_names: [], frequency_level: [], count: 10 })
+  const [settings, setSettings] = useState({ difficulty: [], group_names: [], frequency_level: [], count: 10 })
   const [history, setHistory] = useState([])
   const [markedDiff, setMarkedDiff] = useState({})
 
@@ -81,7 +81,7 @@ export default function FillQuiz() {
     setLoading(true)
     try {
       const res = await getFillQuiz({
-        difficulty: settings.difficulty || undefined,
+        difficulty: settings.difficulty.length ? settings.difficulty : undefined,
         group_names: settings.group_names.length ? settings.group_names : undefined,
         frequency_level: settings.frequency_level.length ? settings.frequency_level : undefined,
         count: settings.count,
@@ -172,16 +172,10 @@ export default function FillQuiz() {
 
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Difficulty</label>
-            <select
-              className="input"
+            <DifficultyPicker
               value={settings.difficulty}
-              onChange={(e) => setSettings((s) => ({ ...s, difficulty: e.target.value }))}
-            >
-              <option value="">All difficulties</option>
-              {['NEW_WORD', 'EASY', 'MEDIUM', 'HARD'].map((d) => (
-                <option key={d} value={d}>{DIFF_LABELS[d]}</option>
-              ))}
-            </select>
+              onChange={(val) => setSettings((s) => ({ ...s, difficulty: val }))}
+            />
           </div>
 
           <div>

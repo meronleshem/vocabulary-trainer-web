@@ -440,7 +440,7 @@ def get_study_words(
 
 @app.get("/api/words/quiz")
 def get_quiz(
-    difficulty: Optional[str] = None,
+    difficulty: List[str] = Query(default=[]),
     group_names: List[str] = Query(default=[]),
     frequency_level: List[int] = Query(default=[]),
     count: int = Query(10, ge=1, le=50),
@@ -448,8 +448,9 @@ def get_quiz(
 ):
     conditions, params = [], []
     if difficulty:
-        conditions.append("difficulty = ?")
-        params.append(difficulty)
+        placeholders = ",".join(["?"] * len(difficulty))
+        conditions.append(f"difficulty IN ({placeholders})")
+        params.extend(difficulty)
     if group_names:
         placeholders = ",".join(["?"] * len(group_names))
         conditions.append(f"group_name IN ({placeholders})")
@@ -504,7 +505,7 @@ def get_quiz(
 
 @app.get("/api/words/fill-quiz")
 def get_fill_quiz(
-    difficulty: Optional[str] = None,
+    difficulty: List[str] = Query(default=[]),
     group_names: List[str] = Query(default=[]),
     frequency_level: List[int] = Query(default=[]),
     count: int = Query(10, ge=1, le=50),
@@ -512,8 +513,9 @@ def get_fill_quiz(
     conditions = ["(examples IS NOT NULL AND examples != '')"]
     params = []
     if difficulty:
-        conditions.append("difficulty = ?")
-        params.append(difficulty)
+        placeholders = ",".join(["?"] * len(difficulty))
+        conditions.append(f"difficulty IN ({placeholders})")
+        params.extend(difficulty)
     if group_names:
         placeholders = ",".join(["?"] * len(group_names))
         conditions.append(f"group_name IN ({placeholders})")
@@ -1191,10 +1193,8 @@ def get_difficulty_tracking():
         SELECT
             da.date,
             da.words_studied,
-            da.correct_answers,
-            da.total_answers,
-            CASE WHEN da.total_answers > 0
-                 THEN ROUND(CAST(da.correct_answers AS FLOAT) / da.total_answers * 100)
+            CASE WHEN COALESCE(s.total_correct, 0) + COALESCE(s.total_incorrect, 0) > 0
+                 THEN ROUND(CAST(s.total_correct AS FLOAT) / (s.total_correct + s.total_incorrect) * 100)
                  ELSE NULL END AS accuracy_pct,
             COALESCE(dh.easy,   0) AS easy,
             COALESCE(dh.medium, 0) AS medium,
@@ -1212,7 +1212,9 @@ def get_difficulty_tracking():
         LEFT JOIN (
             SELECT DATE(started_at) AS date,
                    SUM(COALESCE(duration_seconds, 0)) AS total_duration,
-                   COUNT(*) AS session_count
+                   COUNT(*) AS session_count,
+                   SUM(COALESCE(correct_count, 0)) AS total_correct,
+                   SUM(COALESCE(incorrect_count, 0)) AS total_incorrect
             FROM sessions
             GROUP BY DATE(started_at)
         ) s ON s.date = da.date
@@ -1262,16 +1264,15 @@ def get_trends(period: str = "weekly"):
     cur.execute(f"""
         SELECT
             {group_expr} AS period,
-            MIN(date) AS period_start,
-            SUM(words_studied)    AS words,
-            SUM(sessions_completed) AS sessions,
-            SUM(xp_earned)        AS xp,
-            SUM(correct_answers)  AS correct_answers,
-            SUM(total_answers)    AS total_answers,
-            CASE WHEN SUM(total_answers) > 0
-                 THEN ROUND(CAST(SUM(correct_answers) AS FLOAT) / SUM(total_answers) * 100)
+            MIN(da.date) AS period_start,
+            SUM(da.words_studied)      AS words,
+            SUM(da.sessions_completed) AS sessions,
+            SUM(da.xp_earned)          AS xp,
+            CASE WHEN COALESCE(SUM(s.correct_count), 0) + COALESCE(SUM(s.incorrect_count), 0) > 0
+                 THEN ROUND(CAST(SUM(s.correct_count) AS FLOAT) / (SUM(s.correct_count) + SUM(s.incorrect_count)) * 100)
                  ELSE NULL END AS accuracy_pct
-        FROM daily_activity
+        FROM daily_activity da
+        LEFT JOIN sessions s ON DATE(s.started_at) = da.date
         GROUP BY {group_expr}
         ORDER BY period DESC
         LIMIT {limit}
