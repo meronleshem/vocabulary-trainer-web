@@ -1307,6 +1307,23 @@ def get_difficulty_tracking():
     return rows
 
 
+@app.get("/api/sessions")
+def get_sessions(limit: int = Query(50, ge=1, le=200)):
+    """Return past sessions, most recent first."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, session_type, started_at, ended_at,
+               word_count, correct_count, incorrect_count, duration_seconds
+        FROM sessions
+        ORDER BY started_at DESC
+        LIMIT ?
+    """, (limit,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
 @app.get("/api/progress/weak-words")
 def get_weak_words():
     """Return words with accuracy below 60% and at least 3 attempts."""

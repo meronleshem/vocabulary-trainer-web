@@ -9,7 +9,7 @@ import {
 } from 'recharts'
 import {
   getProgress, patchDailyGoal, getDifficultyTracking,
-  getWeakWords, getTrends,
+  getWeakWords, getTrends, getSessions,
 } from '../api/client'
 import DifficultyBadge from '../components/DifficultyBadge'
 
@@ -441,19 +441,55 @@ function WordsTab() {
 
 // ── Tab: History ──────────────────────────────────────────────────────────────
 
+const SESSION_TYPE_LABELS = {
+  quiz:          'Quiz',
+  fill_quiz:     'Fill in Blank',
+  study:         'Flashcards',
+  study_session: 'Study Session',
+  srs:           'SRS Review',
+}
+
+const SESSION_TYPE_COLORS = {
+  quiz:          'text-amber-400  bg-amber-500/10  border-amber-500/25',
+  fill_quiz:     'text-violet-400 bg-violet-500/10 border-violet-500/25',
+  study:         'text-blue-400   bg-blue-500/10   border-blue-500/25',
+  study_session: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
+  srs:           'text-primary-light bg-primary/10 border-primary/25',
+}
+
+function fmtDateTime(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) +
+    ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
+function SessionScore({ correct, incorrect }) {
+  const total = correct + incorrect
+  if (total === 0) return <span className="text-slate-500">—</span>
+  const pct = Math.round((correct / total) * 100)
+  return (
+    <span className={`font-medium ${accuracyColor(pct)}`}>
+      {correct}/{total} <span className="text-xs opacity-70">({pct}%)</span>
+    </span>
+  )
+}
+
 function HistoryTab() {
-  const [rows, setRows] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [sessions, setSessions]   = useState(null)
+  const [daily, setDaily]         = useState(null)
+  const [loading, setLoading]     = useState(true)
 
   useEffect(() => {
-    getDifficultyTracking()
-      .then((r) => setRows(r.data))
+    Promise.all([getSessions(), getDifficultyTracking()])
+      .then(([s, d]) => { setSessions(s.data); setDaily(d.data) })
       .finally(() => setLoading(false))
   }, [])
 
   if (loading) return <Spinner />
 
-  if (!rows || rows.length === 0) {
+  const noData = (!sessions || sessions.length === 0) && (!daily || daily.length === 0)
+  if (noData) {
     return (
       <p className="text-slate-500 text-sm text-center py-8">
         No history yet. Complete some study sessions to see data here.
@@ -462,39 +498,106 @@ function HistoryTab() {
   }
 
   return (
-    <div className="card p-0 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-dark-400 bg-dark-700">
-              <th className="text-left py-2.5 px-3 text-slate-400 font-medium">Date</th>
-              <th className="text-right py-2.5 px-3 text-primary-light font-medium">Studied</th>
-              <th className="text-right py-2.5 px-3 text-slate-400 font-medium">Accuracy</th>
-              <th className="text-right py-2.5 px-3 text-slate-400 font-medium hidden sm:table-cell">Sessions</th>
-              <th className="text-right py-2.5 px-3 text-slate-400 font-medium hidden sm:table-cell">
-                <span className="flex items-center justify-end gap-1"><Clock size={12} /> Time</span>
-              </th>
-              <th className="text-right py-2.5 px-3 text-emerald-400 font-medium">Easy</th>
-              <th className="text-right py-2.5 px-3 text-amber-400 font-medium">Med</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.date} className="border-b border-dark-500 hover:bg-dark-500/50 transition-colors">
-                <td className="py-2 px-3 text-slate-300 whitespace-nowrap">{fmtDate(row.date)}</td>
-                <td className="py-2 px-3 text-right font-medium text-primary-light">{row.words_studied}</td>
-                <td className={`py-2 px-3 text-right font-medium ${accuracyColor(row.accuracy_pct)}`}>
-                  {fmtPct(row.accuracy_pct)}
-                </td>
-                <td className="py-2 px-3 text-right text-slate-400 hidden sm:table-cell">{row.session_count || '—'}</td>
-                <td className="py-2 px-3 text-right text-slate-400 hidden sm:table-cell">{fmtMins(row.total_duration_seconds)}</td>
-                <td className="py-2 px-3 text-right text-emerald-400 font-medium">{row.easy || '—'}</td>
-                <td className="py-2 px-3 text-right text-amber-400 font-medium">{row.medium || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div className="space-y-6">
+      {/* ── Session log ── */}
+      {sessions && sessions.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Clock size={15} className="text-primary-light" />
+            <span className="text-sm font-semibold text-slate-200">Session Log</span>
+            <span className="ml-auto text-xs text-slate-500">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
+          </div>
+
+          <div className="card p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-dark-400 bg-dark-700">
+                    <th className="text-left py-2.5 px-3 text-slate-400 font-medium">Date &amp; Time</th>
+                    <th className="text-left py-2.5 px-3 text-slate-400 font-medium">Type</th>
+                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium">Score</th>
+                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium hidden sm:table-cell">Words</th>
+                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium hidden sm:table-cell">
+                      <span className="flex items-center justify-end gap-1"><Clock size={12} /> Duration</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions.map((s) => {
+                    const typeColor = SESSION_TYPE_COLORS[s.session_type] || 'text-slate-400 bg-dark-500 border-dark-400'
+                    return (
+                      <tr key={s.id} className="border-b border-dark-500 hover:bg-dark-500/50 transition-colors">
+                        <td className="py-2.5 px-3 text-slate-300 whitespace-nowrap text-xs">
+                          {fmtDateTime(s.started_at)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full border ${typeColor}`}>
+                            {SESSION_TYPE_LABELS[s.session_type] || s.session_type}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <SessionScore correct={s.correct_count} incorrect={s.incorrect_count} />
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-400 hidden sm:table-cell">
+                          {s.word_count || '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-400 hidden sm:table-cell">
+                          {fmtMins(s.duration_seconds)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Daily activity ── */}
+      {daily && daily.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <TableProperties size={15} className="text-primary-light" />
+            <span className="text-sm font-semibold text-slate-200">Daily Activity</span>
+          </div>
+
+          <div className="card p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-dark-400 bg-dark-700">
+                    <th className="text-left py-2.5 px-3 text-slate-400 font-medium">Date</th>
+                    <th className="text-right py-2.5 px-3 text-primary-light font-medium">Studied</th>
+                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium">Accuracy</th>
+                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium hidden sm:table-cell">Sessions</th>
+                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium hidden sm:table-cell">
+                      <span className="flex items-center justify-end gap-1"><Clock size={12} /> Time</span>
+                    </th>
+                    <th className="text-right py-2.5 px-3 text-emerald-400 font-medium">Easy</th>
+                    <th className="text-right py-2.5 px-3 text-amber-400 font-medium">Med</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {daily.map((row) => (
+                    <tr key={row.date} className="border-b border-dark-500 hover:bg-dark-500/50 transition-colors">
+                      <td className="py-2 px-3 text-slate-300 whitespace-nowrap">{fmtDate(row.date)}</td>
+                      <td className="py-2 px-3 text-right font-medium text-primary-light">{row.words_studied}</td>
+                      <td className={`py-2 px-3 text-right font-medium ${accuracyColor(row.accuracy_pct)}`}>
+                        {fmtPct(row.accuracy_pct)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-slate-400 hidden sm:table-cell">{row.session_count || '—'}</td>
+                      <td className="py-2 px-3 text-right text-slate-400 hidden sm:table-cell">{fmtMins(row.total_duration_seconds)}</td>
+                      <td className="py-2 px-3 text-right text-emerald-400 font-medium">{row.easy || '—'}</td>
+                      <td className="py-2 px-3 text-right text-amber-400 font-medium">{row.medium || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

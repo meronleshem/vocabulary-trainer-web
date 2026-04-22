@@ -41,6 +41,7 @@ export const patchDailyGoal = (daily_goal) => api.patch('/progress/daily-goal', 
 export const getDifficultyTracking = () => api.get('/progress/difficulty-tracking')
 export const getWeakWords = () => api.get('/progress/weak-words')
 export const getTrends = (period = 'weekly') => api.get('/progress/trends', { params: { period } })
+export const getSessions = (limit) => api.get('/sessions', { params: limit ? { limit } : {} })
 
 // ── SRS ───────────────────────────────────────────────────────────────────────
 export const getSRSDue    = (params) => api.get('/srs/due', { params })
