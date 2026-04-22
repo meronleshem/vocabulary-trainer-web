@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
 import { getFillQuiz, getBooks, patchDifficulty, recordSession } from '../api/client'
 import GroupPicker from '../components/GroupPicker'
@@ -70,6 +70,7 @@ export default function FillQuiz() {
   const [settings, setSettings] = useState({ difficulty: [], group_names: [], frequency_level: [], count: 10 })
   const [history, setHistory] = useState([])
   const [markedDiff, setMarkedDiff] = useState({})
+  const startTime = useRef(null)
 
   useEffect(() => { getBooks().then((r) => setBooks(r.data)) }, [])
 
@@ -97,6 +98,7 @@ export default function FillQuiz() {
       setScore(0)
       setHistory([])
       setMarkedDiff({})
+      startTime.current = Date.now()
       setPhase('quiz')
     } finally {
       setLoading(false)
@@ -121,7 +123,13 @@ export default function FillQuiz() {
   const goNext = () => {
     window.speechSynthesis.cancel()
     if (qIdx + 1 >= questions.length) {
-      recordSession('fill_quiz', questions.map((q) => q.word.id)).catch(() => {})
+      const duration = startTime.current ? Math.round((Date.now() - startTime.current) / 1000) : null
+      const finalScore = score + (selected === questions[qIdx].correct ? 1 : 0)
+      recordSession('fill_quiz', questions.map((q) => q.word.id), {
+        correct_count: finalScore,
+        incorrect_count: questions.length - finalScore,
+        duration_seconds: duration,
+      }).catch(() => {})
       setPhase('results')
     } else {
       setQIdx((i) => i + 1)

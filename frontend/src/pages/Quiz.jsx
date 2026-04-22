@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
 import { getQuiz, getBooks, patchDifficulty, recordSession } from '../api/client'
 import GroupPicker from '../components/GroupPicker'
@@ -51,6 +51,7 @@ export default function Quiz() {
   })
   const [history, setHistory] = useState([]) // {correct: bool, word: obj}
   const [markedDiff, setMarkedDiff] = useState({}) // word id -> difficulty set during quiz
+  const startTime = useRef(null)
 
   useEffect(() => {
     getBooks().then((r) => setBooks(r.data))
@@ -81,6 +82,7 @@ export default function Quiz() {
       setScore(0)
       setHistory([])
       setMarkedDiff({})
+      startTime.current = Date.now()
       setPhase('quiz')
     } finally {
       setLoading(false)
@@ -104,7 +106,13 @@ export default function Quiz() {
 
   const goNext = () => {
     if (qIdx + 1 >= questions.length) {
-      recordSession('quiz', questions.map((q) => q.word.id)).catch(() => {})
+      const duration = startTime.current ? Math.round((Date.now() - startTime.current) / 1000) : null
+      const finalScore = score + (selected === questions[qIdx].correct ? 1 : 0)
+      recordSession('quiz', questions.map((q) => q.word.id), {
+        correct_count: finalScore,
+        incorrect_count: questions.length - finalScore,
+        duration_seconds: duration,
+      }).catch(() => {})
       setPhase('results')
     } else {
       setQIdx((i) => i + 1)

@@ -450,18 +450,25 @@ const SESSION_TYPE_LABELS = {
 }
 
 const SESSION_TYPE_COLORS = {
-  quiz:          'text-amber-400  bg-amber-500/10  border-amber-500/25',
-  fill_quiz:     'text-violet-400 bg-violet-500/10 border-violet-500/25',
-  study:         'text-blue-400   bg-blue-500/10   border-blue-500/25',
+  quiz:          'text-amber-400   bg-amber-500/10   border-amber-500/25',
+  fill_quiz:     'text-violet-400  bg-violet-500/10  border-violet-500/25',
+  study:         'text-blue-400    bg-blue-500/10    border-blue-500/25',
   study_session: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
-  srs:           'text-primary-light bg-primary/10 border-primary/25',
+  srs:           'text-primary-light bg-primary/10   border-primary/25',
 }
 
-function fmtDateTime(iso) {
+// dot color per session type (solid, for calendar cells)
+const SESSION_DOT_COLORS = {
+  quiz:          'bg-amber-400',
+  fill_quiz:     'bg-violet-400',
+  study:         'bg-blue-400',
+  study_session: 'bg-emerald-400',
+  srs:           'bg-primary-light',
+}
+
+function fmtTime(iso) {
   if (!iso) return '—'
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) +
-    ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
 function SessionScore({ correct, incorrect }) {
@@ -475,14 +482,182 @@ function SessionScore({ correct, incorrect }) {
   )
 }
 
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function SessionCalendar({ sessions }) {
+  const today = new Date()
+  const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() })
+  const [selectedDate, setSelectedDate] = useState(null)
+
+  // group sessions by YYYY-MM-DD
+  const byDate = {}
+  sessions.forEach((s) => {
+    const key = s.started_at.slice(0, 10)
+    if (!byDate[key]) byDate[key] = []
+    byDate[key].push(s)
+  })
+
+  const firstOfMonth = new Date(view.year, view.month, 1)
+  const daysInMonth  = new Date(view.year, view.month + 1, 0).getDate()
+  const startDow     = firstOfMonth.getDay() // 0=Sun
+
+  const prevMonth = () => setView(({ year, month }) => {
+    const d = new Date(year, month - 1)
+    return { year: d.getFullYear(), month: d.getMonth() }
+  })
+  const nextMonth = () => setView(({ year, month }) => {
+    const d = new Date(year, month + 1)
+    return { year: d.getFullYear(), month: d.getMonth() }
+  })
+
+  const monthLabel = firstOfMonth.toLocaleDateString('en', { month: 'long', year: 'numeric' })
+  const todayKey   = today.toISOString().slice(0, 10)
+
+  const selectedKey      = selectedDate
+    ? `${view.year}-${String(view.month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`
+    : null
+  const selectedSessions = selectedKey ? (byDate[selectedKey] || []) : []
+
+  // cells: null for padding, number for day
+  const cells = [
+    ...Array(startDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+
+  return (
+    <div className="space-y-4">
+      {/* Month nav */}
+      <div className="flex items-center justify-between">
+        <button onClick={prevMonth} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-dark-500 transition-colors">
+          ‹
+        </button>
+        <span className="text-sm font-semibold text-slate-200">{monthLabel}</span>
+        <button
+          onClick={nextMonth}
+          disabled={view.year === today.getFullYear() && view.month === today.getMonth()}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-dark-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          ›
+        </button>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {DOW_LABELS.map((d) => (
+          <div key={d} className="text-center text-[10px] font-medium text-slate-600 py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((day, i) => {
+          if (!day) return <div key={`pad-${i}`} />
+
+          const key      = `${view.year}-${String(view.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const daySess  = byDate[key] || []
+          const isToday  = key === todayKey
+          const isSel    = day === selectedDate
+          const hasSess  = daySess.length > 0
+
+          // unique types for dots (up to 3)
+          const types = [...new Set(daySess.map((s) => s.session_type))].slice(0, 3)
+
+          return (
+            <button
+              key={key}
+              onClick={() => setSelectedDate(isSel ? null : day)}
+              className={`relative flex flex-col items-center rounded-lg py-1.5 px-0.5 text-xs transition-all ${
+                isSel
+                  ? 'bg-primary/20 border border-primary/40'
+                  : isToday
+                  ? 'bg-dark-500 border border-primary/30'
+                  : hasSess
+                  ? 'hover:bg-dark-500 border border-transparent hover:border-dark-300 cursor-pointer'
+                  : 'border border-transparent cursor-default'
+              }`}
+            >
+              <span className={`font-medium ${
+                isToday ? 'text-primary-light' : hasSess ? 'text-slate-200' : 'text-slate-600'
+              }`}>
+                {day}
+              </span>
+              {/* Session dots */}
+              <div className="flex gap-0.5 mt-0.5 h-1.5">
+                {types.map((t) => (
+                  <span key={t} className={`w-1.5 h-1.5 rounded-full ${SESSION_DOT_COLORS[t] || 'bg-slate-400'}`} />
+                ))}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Selected day detail */}
+      {selectedDate && (
+        <div className="border-t border-dark-400 pt-4 space-y-2">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            {new Date(view.year, view.month, selectedDate).toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+
+          {selectedSessions.length === 0 ? (
+            <p className="text-slate-600 text-sm">No sessions this day.</p>
+          ) : (
+            <div className="space-y-2">
+              {selectedSessions.map((s) => {
+                const total = s.correct_count + s.incorrect_count
+                const pct   = total > 0 ? Math.round((s.correct_count / total) * 100) : null
+                const typeColor = SESSION_TYPE_COLORS[s.session_type] || 'text-slate-400 bg-dark-500 border-dark-400'
+                return (
+                  <div key={s.id} className="flex items-center gap-3 py-2 px-3 rounded-lg bg-dark-600 border border-dark-400">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border whitespace-nowrap ${typeColor}`}>
+                      {SESSION_TYPE_LABELS[s.session_type] || s.session_type}
+                    </span>
+                    <span className="text-xs text-slate-500">{fmtTime(s.started_at)}</span>
+                    <div className="ml-auto flex items-center gap-3 text-xs">
+                      {pct !== null && (
+                        <span className={`font-medium ${accuracyColor(pct)}`}>
+                          {s.correct_count}/{total} ({pct}%)
+                        </span>
+                      )}
+                      {s.word_count > 0 && (
+                        <span className="text-slate-500">{s.word_count} words</span>
+                      )}
+                      {s.duration_seconds && (
+                        <span className="text-slate-500">{fmtMins(s.duration_seconds)}</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 pt-1 border-t border-dark-500">
+        {Object.entries(SESSION_TYPE_LABELS).map(([type, label]) => (
+          <div key={type} className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${SESSION_DOT_COLORS[type]}`} />
+            <span className="text-xs text-slate-500">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function HistoryTab() {
-  const [sessions, setSessions]   = useState(null)
-  const [daily, setDaily]         = useState(null)
-  const [loading, setLoading]     = useState(true)
+  const [sessions, setSessions] = useState(null)
+  const [daily, setDaily]       = useState(null)
+  const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
-    Promise.all([getSessions(), getDifficultyTracking()])
-      .then(([s, d]) => { setSessions(s.data); setDaily(d.data) })
+    Promise.allSettled([getSessions(500), getDifficultyTracking()])
+      .then(([s, d]) => {
+        if (s.status === 'fulfilled') setSessions(s.value.data)
+        if (d.status === 'fulfilled') setDaily(d.value.data)
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -499,57 +674,16 @@ function HistoryTab() {
 
   return (
     <div className="space-y-6">
-      {/* ── Session log ── */}
-      {sessions && sessions.length > 0 && (
+      {/* ── Session calendar ── */}
+      {sessions && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Clock size={15} className="text-primary-light" />
-            <span className="text-sm font-semibold text-slate-200">Session Log</span>
-            <span className="ml-auto text-xs text-slate-500">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
+            <span className="text-sm font-semibold text-slate-200">Session Calendar</span>
+            <span className="ml-auto text-xs text-slate-500">{sessions.length} total session{sessions.length !== 1 ? 's' : ''}</span>
           </div>
-
-          <div className="card p-0 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-dark-400 bg-dark-700">
-                    <th className="text-left py-2.5 px-3 text-slate-400 font-medium">Date &amp; Time</th>
-                    <th className="text-left py-2.5 px-3 text-slate-400 font-medium">Type</th>
-                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium">Score</th>
-                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium hidden sm:table-cell">Words</th>
-                    <th className="text-right py-2.5 px-3 text-slate-400 font-medium hidden sm:table-cell">
-                      <span className="flex items-center justify-end gap-1"><Clock size={12} /> Duration</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessions.map((s) => {
-                    const typeColor = SESSION_TYPE_COLORS[s.session_type] || 'text-slate-400 bg-dark-500 border-dark-400'
-                    return (
-                      <tr key={s.id} className="border-b border-dark-500 hover:bg-dark-500/50 transition-colors">
-                        <td className="py-2.5 px-3 text-slate-300 whitespace-nowrap text-xs">
-                          {fmtDateTime(s.started_at)}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full border ${typeColor}`}>
-                            {SESSION_TYPE_LABELS[s.session_type] || s.session_type}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <SessionScore correct={s.correct_count} incorrect={s.incorrect_count} />
-                        </td>
-                        <td className="py-2.5 px-3 text-right text-slate-400 hidden sm:table-cell">
-                          {s.word_count || '—'}
-                        </td>
-                        <td className="py-2.5 px-3 text-right text-slate-400 hidden sm:table-cell">
-                          {fmtMins(s.duration_seconds)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+          <div className="card">
+            <SessionCalendar sessions={sessions} />
           </div>
         </div>
       )}
@@ -561,7 +695,6 @@ function HistoryTab() {
             <TableProperties size={15} className="text-primary-light" />
             <span className="text-sm font-semibold text-slate-200">Daily Activity</span>
           </div>
-
           <div className="card p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

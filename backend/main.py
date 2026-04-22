@@ -1308,7 +1308,7 @@ def get_difficulty_tracking():
 
 
 @app.get("/api/sessions")
-def get_sessions(limit: int = Query(50, ge=1, le=200)):
+def get_sessions(limit: int = Query(50, ge=1, le=1000)):
     """Return past sessions, most recent first."""
     conn = get_db()
     cur = conn.cursor()
