@@ -131,6 +131,11 @@ def init_progress_db():
         "ALTER TABLE word_progress ADD COLUMN last_attempt_date TEXT DEFAULT NULL",
         "ALTER TABLE daily_activity ADD COLUMN correct_answers INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE daily_activity ADD COLUMN total_answers INTEGER NOT NULL DEFAULT 0",
+        # SRS columns
+        "ALTER TABLE word_progress ADD COLUMN srs_interval INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE word_progress ADD COLUMN srs_easiness REAL NOT NULL DEFAULT 2.5",
+        "ALTER TABLE word_progress ADD COLUMN srs_repetitions INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE word_progress ADD COLUMN srs_next_review TEXT DEFAULT NULL",
     ]
     for sql in migrations:
         try:
@@ -301,6 +306,43 @@ class RecordSessionBody(BaseModel):
 
 class DailyGoalBody(BaseModel):
     daily_goal: int
+
+
+class SRSReviewBody(BaseModel):
+    word_id: int
+    quality: int  # 0=Again, 1=Hard (wrong), 3=Good, 5=Easy  (SM-2 scale 0-5)
+
+
+# ── SM-2 algorithm ───────────────────────────────────────────────────────────
+
+def _sm2(interval: int, easiness: float, repetitions: int, quality: int):
+    """
+    One SM-2 review step.
+    quality: 0=blackout/Again, 1=wrong, 2=wrong-but-familiar,
+             3=correct-hard, 4=correct, 5=perfect/Easy
+    Returns (new_repetitions, new_interval, new_easiness, next_review_date_str)
+    """
+    if quality < 3:
+        new_repetitions = 0
+        new_interval = 1
+    else:
+        new_repetitions = repetitions + 1
+        if repetitions == 0:
+            new_interval = 1
+        elif repetitions == 1:
+            new_interval = 6
+        else:
+            new_interval = max(1, round(interval * easiness))
+
+    ef = easiness + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
+    new_easiness = max(1.3, ef)
+
+    next_date = (date.today() + timedelta(days=new_interval)).isoformat()
+    return new_repetitions, new_interval, new_easiness, next_date
+
+
+# Difficulty → SM-2 quality mapping (used when flashcard is rated)
+DIFF_TO_QUALITY = {"EASY": 5, "MEDIUM": 3, "HARD": 1}
 
 
 # ── Words ────────────────────────────────────────────────────────────────────
@@ -676,6 +718,26 @@ def patch_difficulty(word_id: int, body: DifficultyUpdate):
                 learned_at = COALESCE(word_progress.learned_at, excluded.learned_at),
                 correct_count = MAX(word_progress.correct_count, excluded.correct_count)
         """, (word_id, LEARN_THRESHOLD, today_str))
+
+        # Apply SRS update based on difficulty rating
+        quality = DIFF_TO_QUALITY[body.difficulty]
+        cur.execute("""
+            SELECT srs_interval, srs_easiness, srs_repetitions FROM word_progress WHERE word_id = ?
+        """, (word_id,))
+        srs_row = cur.fetchone()
+        if srs_row:
+            new_reps, new_int, new_ef, next_review = _sm2(
+                srs_row["srs_interval"] or 1,
+                srs_row["srs_easiness"] or 2.5,
+                srs_row["srs_repetitions"] or 0,
+                quality,
+            )
+            cur.execute("""
+                UPDATE word_progress SET
+                    srs_interval=?, srs_easiness=?, srs_repetitions=?, srs_next_review=?
+                WHERE word_id=?
+            """, (new_int, new_ef, new_reps, next_review, word_id))
+
     conn.commit()
     conn.close()
     return {"id": word_id, "difficulty": body.difficulty}
@@ -982,6 +1044,25 @@ def record_answer(body: RecordAnswerBody):
             WHERE id = 1
         """, (current_streak, longest_streak, today_str))
 
+    # SRS nudge: update next_review but don't advance srs_repetitions
+    # (only the dedicated SRS Review session advances the repetition counter)
+    q_srs = 4 if body.correct else 1
+    cur.execute("""
+        SELECT srs_interval, srs_easiness, srs_repetitions FROM word_progress WHERE word_id = ?
+    """, (body.word_id,))
+    srs_row = cur.fetchone()
+    if srs_row:
+        _, new_int, new_ef, next_review = _sm2(
+            srs_row["srs_interval"] or 1,
+            srs_row["srs_easiness"] or 2.5,
+            srs_row["srs_repetitions"] or 0,
+            q_srs,
+        )
+        cur.execute("""
+            UPDATE word_progress SET srs_interval=?, srs_easiness=?, srs_next_review=?
+            WHERE word_id=?
+        """, (new_int, new_ef, next_review, body.word_id))
+
     # Check achievements
     cur.execute("SELECT COUNT(*) as cnt FROM word_progress WHERE learned = 1")
     learned_count = cur.fetchone()["cnt"]
@@ -1280,3 +1361,197 @@ def get_trends(period: str = "weekly"):
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return list(reversed(rows))  # chronological order for charts
+
+
+# ── SRS ───────────────────────────────────────────────────────────────────────
+
+@app.post("/api/srs/review")
+def srs_review(body: SRSReviewBody):
+    """Apply one SM-2 review step for a word. Awards XP and updates streak."""
+    if body.quality < 0 or body.quality > 5:
+        raise HTTPException(400, "quality must be 0–5")
+
+    today_str = date.today().isoformat()
+    yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Ensure word_progress row exists
+    cur.execute("""
+        INSERT INTO word_progress (word_id, srs_interval, srs_easiness, srs_repetitions)
+        VALUES (?, 1, 2.5, 0)
+        ON CONFLICT(word_id) DO NOTHING
+    """, (body.word_id,))
+
+    cur.execute("""
+        SELECT srs_interval, srs_easiness, srs_repetitions, correct_count, learned
+        FROM word_progress WHERE word_id = ?
+    """, (body.word_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "Word not found")
+
+    new_reps, new_int, new_ef, next_review = _sm2(
+        row["srs_interval"] or 1,
+        row["srs_easiness"] or 2.5,
+        row["srs_repetitions"] or 0,
+        body.quality,
+    )
+
+    is_correct = body.quality >= 3
+    correct_int = 1 if is_correct else 0
+
+    cur.execute("""
+        UPDATE word_progress SET
+            srs_interval      = ?,
+            srs_easiness      = ?,
+            srs_repetitions   = ?,
+            srs_next_review   = ?,
+            attempt_count     = attempt_count + 1,
+            correct_count     = correct_count + ?,
+            last_attempt_date = ?
+        WHERE word_id = ?
+    """, (new_int, new_ef, new_reps, next_review, correct_int, today_str, body.word_id))
+
+    # Mark newly learned if threshold reached
+    newly_learned = False
+    xp_earned = XP_CORRECT_ANSWER if is_correct else 0
+    if is_correct and not row["learned"]:
+        cur.execute("""
+            UPDATE word_progress SET learned = 1, learned_at = ?
+            WHERE word_id = ? AND correct_count + 1 >= ?
+        """, (today_str, body.word_id, LEARN_THRESHOLD))
+        if cur.rowcount > 0:
+            newly_learned = True
+            xp_earned += XP_NEW_WORD_LEARNED
+
+    # Update daily XP
+    cur.execute("UPDATE user_progress SET total_xp = total_xp + ? WHERE id = 1", (xp_earned,))
+    cur.execute("""
+        INSERT INTO daily_activity (date, xp_earned, correct_answers, total_answers)
+        VALUES (?, ?, ?, 1)
+        ON CONFLICT(date) DO UPDATE SET
+            xp_earned       = xp_earned + excluded.xp_earned,
+            correct_answers = correct_answers + excluded.correct_answers,
+            total_answers   = total_answers + 1
+    """, (today_str, xp_earned, correct_int))
+
+    # Update streak on first activity of the day
+    cur.execute("SELECT current_streak, longest_streak, last_activity_date FROM user_progress WHERE id = 1")
+    up = cur.fetchone()
+    current_streak = up["current_streak"]
+    if up["last_activity_date"] != today_str:
+        current_streak = current_streak + 1 if up["last_activity_date"] == yesterday_str else 1
+        longest = max(up["longest_streak"], current_streak)
+        cur.execute("""
+            UPDATE user_progress SET current_streak=?, longest_streak=?, last_activity_date=? WHERE id=1
+        """, (current_streak, longest, today_str))
+
+    # Check achievements
+    cur.execute("SELECT COUNT(*) as cnt FROM word_progress WHERE learned = 1")
+    learned_count = cur.fetchone()["cnt"]
+    cur.execute("SELECT COALESCE(SUM(sessions_completed), 0) as cnt FROM daily_activity")
+    sessions_count = cur.fetchone()["cnt"]
+    new_achievements = _check_achievements(cur, today_str, learned_count, sessions_count, current_streak)
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "word_id":          body.word_id,
+        "quality":          body.quality,
+        "next_review":      next_review,
+        "new_interval":     new_int,
+        "new_easiness":     round(new_ef, 3),
+        "new_reps":         new_reps,
+        "newly_learned":    newly_learned,
+        "xp_earned":        xp_earned,
+        "new_achievements": new_achievements,
+    }
+
+
+@app.get("/api/srs/due")
+def get_srs_due(
+    limit: int = Query(20, ge=1, le=100),
+    group_names: List[str] = Query(default=[]),
+    new_only: bool = False,
+):
+    """Return words whose SRS review is due today or overdue (NULL = never reviewed = due immediately)."""
+    today_str = date.today().isoformat()
+
+    conditions = ["(wp.srs_next_review IS NULL OR wp.srs_next_review <= ?)"]
+    params: list = [today_str]
+
+    if new_only:
+        conditions.append("(wp.srs_repetitions = 0 OR wp.srs_repetitions IS NULL)")
+    if group_names:
+        placeholders = ",".join(["?"] * len(group_names))
+        conditions.append(f"v.group_name IN ({placeholders})")
+        params.extend(group_names)
+
+    where = " AND ".join(conditions)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT
+            v.*,
+            COALESCE(wp.srs_interval,    1)   AS srs_interval,
+            COALESCE(wp.srs_easiness,    2.5)  AS srs_easiness,
+            COALESCE(wp.srs_repetitions, 0)    AS srs_repetitions,
+            wp.srs_next_review,
+            CASE
+                WHEN wp.srs_next_review IS NULL THEN NULL
+                ELSE CAST(julianday(?) - julianday(wp.srs_next_review) AS INTEGER)
+            END AS days_overdue
+        FROM vocabulary v
+        LEFT JOIN word_progress wp ON wp.word_id = v.id
+        WHERE {where}
+        ORDER BY wp.srs_next_review ASC
+        LIMIT ?
+    """, [today_str] + params + [limit])
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+@app.get("/api/srs/stats")
+def get_srs_stats():
+    """Return due count breakdown and upcoming review schedule for the next 7 days."""
+    today_str = date.today().isoformat()
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT COUNT(*) as cnt FROM vocabulary v
+        LEFT JOIN word_progress wp ON wp.word_id = v.id
+        WHERE wp.srs_next_review IS NULL OR wp.srs_next_review <= ?
+    """, (today_str,))
+    due_now = cur.fetchone()["cnt"]
+
+    cur.execute("""
+        SELECT COUNT(*) as cnt FROM vocabulary v
+        LEFT JOIN word_progress wp ON wp.word_id = v.id
+        WHERE (wp.srs_next_review IS NULL OR wp.srs_next_review <= ?)
+          AND (wp.srs_repetitions = 0 OR wp.srs_repetitions IS NULL)
+    """, (today_str,))
+    new_words = cur.fetchone()["cnt"]
+
+    # Upcoming: words due in next 7 days (excluding today)
+    upcoming = []
+    for i in range(1, 8):
+        day_str = (date.today() + timedelta(days=i)).isoformat()
+        cur.execute("""
+            SELECT COUNT(*) as cnt FROM word_progress
+            WHERE srs_next_review = ?
+        """, (day_str,))
+        upcoming.append({"date": day_str, "count": cur.fetchone()["cnt"]})
+
+    conn.close()
+    return {
+        "due_now":   due_now,
+        "new_words": new_words,
+        "in_review": due_now - new_words,
+        "upcoming":  upcoming,
+    }

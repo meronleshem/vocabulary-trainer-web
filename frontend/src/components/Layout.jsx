@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   Search,
-  BookOpen,
   Brain,
   Trophy,
   PenLine,
@@ -13,11 +12,14 @@ import {
   Sparkles,
   GraduationCap,
   TrendingUp,
+  CalendarClock,
 } from 'lucide-react'
+import { useSRSStats } from '../hooks/useSRSStats'
 
 const NAV = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/progress',      icon: TrendingUp,      label: 'Progress' },
+  { to: '/srs',           icon: CalendarClock,   label: 'SRS Review', srs: true },
   { to: '/browse',        icon: Search,          label: 'Browse' },
   { to: '/study',         icon: Brain,           label: 'Flashcards' },
   { to: '/study-session', icon: GraduationCap,   label: 'Study Session' },
@@ -26,7 +28,7 @@ const NAV = [
   { to: '/books',         icon: Library,         label: 'Groups' },
 ]
 
-function NavItem({ to, icon: Icon, label, onClick }) {
+function NavItem({ to, icon: Icon, label, badge, onClick }) {
   return (
     <NavLink
       to={to}
@@ -40,13 +42,20 @@ function NavItem({ to, icon: Icon, label, onClick }) {
       }
     >
       <Icon size={18} />
-      <span>{label}</span>
+      <span className="flex-1">{label}</span>
+      {badge > 0 && (
+        <span className="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </NavLink>
   )
 }
 
 export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { stats: srsStats } = useSRSStats()
+  const srsDue = srsStats?.due_now ?? 0
 
   const sidebar = (
     <nav className="flex flex-col h-full">
@@ -61,7 +70,12 @@ export default function Layout({ children }) {
       {/* Links */}
       <div className="flex flex-col gap-1 px-2 flex-1">
         {NAV.map((n) => (
-          <NavItem key={n.to} {...n} onClick={() => setMobileOpen(false)} />
+          <NavItem
+            key={n.to}
+            {...n}
+            badge={n.srs ? srsDue : 0}
+            onClick={() => setMobileOpen(false)}
+          />
         ))}
       </div>
 

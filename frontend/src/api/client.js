@@ -42,4 +42,10 @@ export const getDifficultyTracking = () => api.get('/progress/difficulty-trackin
 export const getWeakWords = () => api.get('/progress/weak-words')
 export const getTrends = (period = 'weekly') => api.get('/progress/trends', { params: { period } })
 
+// ── SRS ───────────────────────────────────────────────────────────────────────
+export const getSRSDue    = (params) => api.get('/srs/due', { params })
+export const getSRSStats  = ()       => api.get('/srs/stats')
+export const postSRSReview = (word_id, quality) =>
+  api.post('/srs/review', { word_id, quality })
+
 export default api

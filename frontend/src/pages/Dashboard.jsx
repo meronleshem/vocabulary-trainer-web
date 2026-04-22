@@ -4,8 +4,9 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
-import { BookOpen, Brain, Trophy, Layers, ArrowRight } from 'lucide-react'
+import { BookOpen, Brain, Trophy, Layers, CalendarClock, ArrowRight } from 'lucide-react'
 import { getStats } from '../api/client'
+import { useSRSStats } from '../hooks/useSRSStats'
 import StatsCard from '../components/StatsCard'
 import DifficultyBadge from '../components/DifficultyBadge'
 
@@ -46,6 +47,7 @@ const CustomTooltip = ({ active, payload }) => {
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const { stats: srsStats } = useSRSStats()
 
   useEffect(() => {
     getStats()
@@ -129,6 +131,31 @@ export default function Dashboard() {
           color="text-emerald-400"
         />
       </div>
+
+      {/* SRS widget */}
+      {srsStats && srsStats.due_now > 0 && (
+        <div className="card flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
+              <CalendarClock size={18} className="text-primary-light" />
+            </div>
+            <div>
+              <p className="text-slate-200 font-medium text-sm">
+                {srsStats.due_now} card{srsStats.due_now !== 1 ? 's' : ''} due for review
+              </p>
+              <p className="text-slate-500 text-xs">
+                {srsStats.new_words} new · {srsStats.in_review} review
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/srs"
+            className="btn-primary flex-shrink-0 text-sm px-4 py-1.5"
+          >
+            Review now
+          </Link>
+        </div>
+      )}
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
