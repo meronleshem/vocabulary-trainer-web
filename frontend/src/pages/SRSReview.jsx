@@ -138,7 +138,7 @@ function SetupScreen({ stats, onStart }) {
 
 // ── Review card ───────────────────────────────────────────────────────────────
 function ReviewCard({ word, flipped, onFlip, onRate, progress }) {
-  const imageUrl = word.image_url ? getImageUrl(word.image_url) : null
+  const imageUrl = word.image_url ? getImageUrl(word.image_url, word.group_name) : null
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
@@ -326,10 +326,17 @@ export default function SRSReview() {
       const newResults = [...results, { word_id: word.id, quality, next_review: res.data.next_review }]
       setResults(newResults)
 
-      if (idx + 1 >= queue.length) {
-        // Record the session
+      // "Again" — push card back to end of queue so it re-appears this session
+      let currentQueue = queue
+      if (quality === 0) {
+        currentQueue = [...queue, word]
+        setQueue(currentQueue)
+      }
+
+      if (idx + 1 >= currentQueue.length) {
         const duration = Math.round((Date.now() - sessionStart) / 1000)
-        recordSession('srs', queue.map((w) => w.id), {
+        const uniqueIds = [...new Set(currentQueue.map((w) => w.id))]
+        recordSession('srs', uniqueIds, {
           duration_seconds: duration,
           correct_count: newResults.filter((r) => r.quality >= 3).length,
           incorrect_count: newResults.filter((r) => r.quality < 3).length,
@@ -344,10 +351,13 @@ export default function SRSReview() {
     }
   }, [queue, idx, results, sessionStart])
 
+  useEffect(() => {
+    if (phase === 'review' && queue[idx]) speak(queue[idx].engWord, 'en-US')
+  }, [idx, phase])
+
   const handleFlip = useCallback(() => {
     setFlipped(true)
-    if (queue[idx]) speak(queue[idx].engWord, 'en-US')
-  }, [queue, idx])
+  }, [])
 
   const handleRestart = () => {
     setPhase('loading')
