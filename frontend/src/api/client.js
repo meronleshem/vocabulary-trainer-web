@@ -43,6 +43,11 @@ export const getWeakWords = () => api.get('/progress/weak-words')
 export const getTrends = (period = 'weekly') => api.get('/progress/trends', { params: { period } })
 export const getSessions = (limit) => api.get('/sessions', { params: limit ? { limit } : {} })
 
+// ── Statistics ────────────────────────────────────────────────────────────────
+export const getStatsPerformance = () => api.get('/stats/performance')
+export const getStatsVelocity    = () => api.get('/stats/velocity')
+export const getStatsHabits      = () => api.get('/stats/habits')
+
 // ── SRS ───────────────────────────────────────────────────────────────────────
 export const getSRSDue    = (params) => api.get('/srs/due', { params })
 export const getSRSStats  = ()       => api.get('/srs/stats')

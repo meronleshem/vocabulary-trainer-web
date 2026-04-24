@@ -1489,6 +1489,207 @@ def srs_review(body: SRSReviewBody):
     }
 
 
+@app.get("/api/stats/performance")
+def get_stats_performance():
+    """Accuracy by difficulty & session type, best/worst words, SRS stages, coverage stats."""
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            v.difficulty,
+            COUNT(v.id) AS total_words,
+            COUNT(CASE WHEN wp.attempt_count > 0 THEN 1 END) AS attempted_words,
+            COALESCE(SUM(wp.correct_count), 0) AS total_correct,
+            COALESCE(SUM(wp.attempt_count), 0) AS total_attempts
+        FROM vocabulary v
+        LEFT JOIN word_progress wp ON wp.word_id = v.id
+        GROUP BY v.difficulty
+    """)
+    by_difficulty = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT
+            session_type,
+            COUNT(*) AS session_count,
+            SUM(correct_count) AS total_correct,
+            SUM(correct_count + incorrect_count) AS total_attempts,
+            ROUND(AVG(CASE WHEN duration_seconds > 0 THEN duration_seconds END)) AS avg_duration
+        FROM sessions
+        GROUP BY session_type
+        ORDER BY session_count DESC
+    """)
+    by_session_type = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT v.engWord, v.hebWord, v.difficulty,
+               wp.correct_count, wp.attempt_count,
+               ROUND(100.0 * wp.correct_count / wp.attempt_count, 1) AS accuracy
+        FROM vocabulary v
+        JOIN word_progress wp ON wp.word_id = v.id
+        WHERE wp.attempt_count >= 5
+        ORDER BY accuracy DESC, wp.attempt_count DESC
+        LIMIT 5
+    """)
+    best_words = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT v.engWord, v.hebWord, v.difficulty,
+               wp.correct_count, wp.attempt_count,
+               ROUND(100.0 * wp.correct_count / wp.attempt_count, 1) AS accuracy
+        FROM vocabulary v
+        JOIN word_progress wp ON wp.word_id = v.id
+        WHERE wp.attempt_count >= 5
+        ORDER BY accuracy ASC, wp.attempt_count DESC
+        LIMIT 5
+    """)
+    worst_words = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT
+            CASE
+                WHEN wp.srs_repetitions IS NULL OR wp.srs_repetitions = 0 THEN 'new'
+                WHEN wp.srs_interval <= 7  THEN 'learning'
+                WHEN wp.srs_interval <= 21 THEN 'young'
+                ELSE 'mature'
+            END AS stage,
+            COUNT(*) AS count
+        FROM vocabulary v
+        LEFT JOIN word_progress wp ON wp.word_id = v.id
+        GROUP BY stage
+    """)
+    srs_raw = {r["stage"]: r["count"] for r in cur.fetchall()}
+    srs_stages = {
+        "new":      srs_raw.get("new", 0),
+        "learning": srs_raw.get("learning", 0),
+        "young":    srs_raw.get("young", 0),
+        "mature":   srs_raw.get("mature", 0),
+    }
+
+    cur.execute("""
+        SELECT AVG(srs_easiness) AS avg_ef
+        FROM word_progress WHERE srs_repetitions > 0
+    """)
+    row = cur.fetchone()
+    avg_easiness = round(row["avg_ef"], 2) if row and row["avg_ef"] else None
+
+    today_str = date.today().isoformat()
+    cur.execute("""
+        SELECT COUNT(*) AS cnt FROM word_progress
+        WHERE srs_next_review < ? AND srs_repetitions > 0
+    """, (today_str,))
+    overdue = cur.fetchone()["cnt"]
+
+    cur.execute("SELECT COUNT(*) FROM vocabulary WHERE examples IS NOT NULL AND examples != ''")
+    words_with_examples = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM vocabulary WHERE image_url IS NOT NULL AND image_url != ''")
+    words_with_images = cur.fetchone()[0]
+
+    cur.execute("""
+        SELECT COUNT(*) FROM vocabulary v
+        LEFT JOIN word_progress wp ON wp.word_id = v.id
+        WHERE wp.attempt_count IS NULL OR wp.attempt_count = 0
+    """)
+    words_never_attempted = cur.fetchone()[0]
+
+    conn.close()
+    return {
+        "by_difficulty":         by_difficulty,
+        "by_session_type":       by_session_type,
+        "best_words":            best_words,
+        "worst_words":           worst_words,
+        "srs_stages":            srs_stages,
+        "avg_easiness":          avg_easiness,
+        "overdue":               overdue,
+        "words_with_examples":   words_with_examples,
+        "words_with_images":     words_with_images,
+        "words_never_attempted": words_never_attempted,
+    }
+
+
+@app.get("/api/stats/velocity")
+def get_stats_velocity():
+    """Words learned per week for the last 12 weeks."""
+    today = date.today()
+    bins = []
+    for i in range(11, -1, -1):
+        week_end   = today - timedelta(weeks=i)
+        week_start = week_end - timedelta(days=6)
+        bins.append({
+            "label":   week_start.strftime("%b %d"),
+            "start":   week_start.isoformat(),
+            "end":     week_end.isoformat(),
+            "learned": 0,
+        })
+
+    conn = get_db()
+    cur  = conn.cursor()
+    cutoff = bins[0]["start"]
+    cur.execute("""
+        SELECT learned_at FROM word_progress
+        WHERE learned = 1 AND learned_at IS NOT NULL AND learned_at >= ?
+    """, (cutoff,))
+    for row in cur.fetchall():
+        la = row["learned_at"][:10]
+        for b in bins:
+            if b["start"] <= la <= b["end"]:
+                b["learned"] += 1
+                break
+    conn.close()
+    return [{"label": b["label"], "learned": b["learned"]} for b in bins]
+
+
+@app.get("/api/stats/habits")
+def get_stats_habits():
+    """Study patterns: day-of-week activity, total study time, session counts."""
+    conn = get_db()
+    cur  = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            CAST(strftime('%w', started_at) AS INTEGER) AS dow,
+            COUNT(*) AS session_count,
+            COALESCE(SUM(correct_count + incorrect_count), 0) AS total_answers
+        FROM sessions
+        WHERE started_at IS NOT NULL
+        GROUP BY dow
+    """)
+    dow_map = {r["dow"]: dict(r) for r in cur.fetchall()}
+    DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    by_dow = [
+        {
+            "dow":      i,
+            "label":    DOW_LABELS[i],
+            "sessions": dow_map.get(i, {}).get("session_count", 0),
+            "answers":  dow_map.get(i, {}).get("total_answers", 0) or 0,
+        }
+        for i in range(7)
+    ]
+
+    cur.execute("""
+        SELECT COALESCE(SUM(duration_seconds), 0) AS total_secs FROM sessions
+        WHERE duration_seconds IS NOT NULL
+    """)
+    total_seconds = cur.fetchone()["total_secs"] or 0
+
+    cur.execute("SELECT COUNT(*) AS cnt FROM sessions")
+    total_sessions = cur.fetchone()["cnt"]
+
+    cur.execute("""
+        SELECT COUNT(DISTINCT date) AS cnt FROM daily_activity WHERE words_studied > 0
+    """)
+    days_active = cur.fetchone()["cnt"]
+
+    conn.close()
+    return {
+        "by_dow":        by_dow,
+        "total_seconds": total_seconds,
+        "total_sessions": total_sessions,
+        "days_active":   days_active,
+    }
+
+
 @app.get("/api/srs/due")
 def get_srs_due(
     limit: int = Query(20, ge=1, le=100),
