@@ -1489,6 +1489,37 @@ def srs_review(body: SRSReviewBody):
     }
 
 
+@app.get("/api/stats/freq-difficulty")
+def get_stats_freq_difficulty():
+    """Word counts for every frequency-level × difficulty combination."""
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("SELECT LOWER(engWord) AS eng, difficulty FROM vocabulary")
+
+    DIFFS   = ["NEW_WORD", "EASY", "MEDIUM", "HARD"]
+    matrix  = {lvl: {d: 0 for d in DIFFS} for lvl in range(1, 6)}
+
+    for row in cur.fetchall():
+        lvl  = WORD_FREQ.get(row["eng"], {}).get("frequency_level", 5)
+        diff = row["difficulty"]
+        if lvl in matrix and diff in matrix[lvl]:
+            matrix[lvl][diff] += 1
+
+    conn.close()
+    return [
+        {
+            "freq_level": lvl,
+            "label":      FREQ_LABELS[lvl],
+            "NEW_WORD":   matrix[lvl]["NEW_WORD"],
+            "EASY":       matrix[lvl]["EASY"],
+            "MEDIUM":     matrix[lvl]["MEDIUM"],
+            "HARD":       matrix[lvl]["HARD"],
+            "total":      sum(matrix[lvl].values()),
+        }
+        for lvl in range(1, 6)
+    ]
+
+
 @app.get("/api/stats/performance")
 def get_stats_performance():
     """Accuracy by difficulty & session type, best/worst words, SRS stages, coverage stats."""

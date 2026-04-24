@@ -44,7 +44,8 @@ export const getTrends = (period = 'weekly') => api.get('/progress/trends', { pa
 export const getSessions = (limit) => api.get('/sessions', { params: limit ? { limit } : {} })
 
 // ── Statistics ────────────────────────────────────────────────────────────────
-export const getStatsPerformance = () => api.get('/stats/performance')
+export const getStatsFreqDifficulty = () => api.get('/stats/freq-difficulty')
+export const getStatsPerformance    = () => api.get('/stats/performance')
 export const getStatsVelocity    = () => api.get('/stats/velocity')
 export const getStatsHabits      = () => api.get('/stats/habits')
 

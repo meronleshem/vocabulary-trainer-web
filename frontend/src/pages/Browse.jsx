@@ -34,12 +34,15 @@ export default function Browse() {
   const [groups, setGroups] = useState([])
   const [books, setBooks] = useState([])
 
-  // Filters — seed groupName from ?group= query param (from Books page)
+  // Filters — seed from URL query params
   const [search, setSearch] = useState('')
-  const [difficulty, setDifficulty] = useState('')
+  const [difficulty, setDifficulty] = useState(() => searchParams.get('difficulty') || '')
   const [groupName, setGroupName] = useState(() => searchParams.get('group') || '')
   // Multi-select frequency levels: Set<number>
-  const [freqLevels, setFreqLevels] = useState(() => new Set())
+  const [freqLevels, setFreqLevels] = useState(() => {
+    const levels = searchParams.getAll('frequency_level').map(Number).filter(Boolean)
+    return new Set(levels)
+  })
 
   // Pagination
   const [page, setPage] = useState(1)

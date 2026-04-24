@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -10,6 +11,7 @@ import {
 import {
   getStats, getProgress, getSRSStats,
   getStatsPerformance, getStatsVelocity, getStatsHabits,
+  getStatsFreqDifficulty,
 } from '../api/client'
 import DifficultyBadge from '../components/DifficultyBadge'
 import StatsCard from '../components/StatsCard'
@@ -112,6 +114,7 @@ function WordAccTable({ title, words, color }) {
 export default function Statistics() {
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
 
   useEffect(() => {
     Promise.all([
@@ -121,7 +124,8 @@ export default function Statistics() {
       getStatsPerformance(),
       getStatsVelocity(),
       getStatsHabits(),
-    ]).then(([statsR, progressR, srsR, perfR, velocityR, habitsR]) => {
+      getStatsFreqDifficulty(),
+    ]).then(([statsR, progressR, srsR, perfR, velocityR, habitsR, matrixR]) => {
       setData({
         stats:    statsR.data,
         progress: progressR.data,
@@ -129,6 +133,7 @@ export default function Statistics() {
         perf:     perfR.data,
         velocity: velocityR.data,
         habits:   habitsR.data,
+        matrix:   matrixR.data,
       })
     }).finally(() => setLoading(false))
   }, [])
@@ -136,7 +141,7 @@ export default function Statistics() {
   if (loading) return <Spinner />
   if (!data)   return <p className="text-slate-500">Failed to load statistics.</p>
 
-  const { stats, progress, srs, perf, velocity, habits } = data
+  const { stats, progress, srs, perf, velocity, habits, matrix } = data
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const totalCorrect  = perf.by_session_type.reduce((s, t) => s + (t.total_correct  || 0), 0)
@@ -593,6 +598,92 @@ export default function Statistics() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── 7. Frequency × Difficulty Matrix ────────────────────────────────── */}
+      <div className="card overflow-x-auto">
+        <div className="flex items-baseline gap-2 mb-4">
+          <h2 className="text-base font-semibold text-slate-200">Frequency × Difficulty</h2>
+          <span className="text-slate-500 text-sm">click any cell to browse matching words</span>
+        </div>
+        <table className="w-full text-sm border-collapse min-w-[520px]">
+          <thead>
+            <tr>
+              <th className="text-left text-xs font-medium text-slate-500 pb-3 pr-4 w-28">Frequency</th>
+              {[
+                { key: 'NEW_WORD', label: 'New',    color: 'text-violet-400' },
+                { key: 'EASY',     label: 'Easy',   color: 'text-emerald-400' },
+                { key: 'MEDIUM',   label: 'Medium', color: 'text-amber-400' },
+                { key: 'HARD',     label: 'Hard',   color: 'text-red-400' },
+              ].map(col => (
+                <th key={col.key} className={`text-center text-xs font-semibold pb-3 w-20 ${col.color}`}>
+                  {col.label}
+                </th>
+              ))}
+              <th className="text-center text-xs font-medium text-slate-500 pb-3 w-16">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.map(row => {
+              const colDefs = [
+                { key: 'NEW_WORD', bg: 'hover:bg-violet-500/10',  border: 'border-violet-500/20'  },
+                { key: 'EASY',     bg: 'hover:bg-emerald-500/10', border: 'border-emerald-500/20' },
+                { key: 'MEDIUM',   bg: 'hover:bg-amber-500/10',   border: 'border-amber-500/20'   },
+                { key: 'HARD',     bg: 'hover:bg-red-500/10',     border: 'border-red-500/20'     },
+              ]
+              return (
+                <tr key={row.freq_level} className="border-t border-dark-400">
+                  <td className="py-2.5 pr-4">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ background: FREQ_COLORS[row.freq_level] }}
+                      />
+                      <span className="text-xs text-slate-300 font-medium">{row.label}</span>
+                    </div>
+                  </td>
+                  {colDefs.map(col => (
+                    <td key={col.key} className="text-center py-2.5">
+                      {row[col.key] > 0 ? (
+                        <button
+                          onClick={() => {
+                            const params = new URLSearchParams({
+                              difficulty: col.key,
+                              frequency_level: row.freq_level,
+                            })
+                            navigate(`/browse?${params.toString()}`)
+                          }}
+                          className={`w-14 py-1 rounded-md text-xs font-semibold text-slate-200 border ${col.border} ${col.bg} transition-colors`}
+                        >
+                          {row[col.key].toLocaleString()}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-600">—</span>
+                      )}
+                    </td>
+                  ))}
+                  <td className="text-center py-2.5">
+                    <span className="text-xs font-medium text-slate-400">{row.total.toLocaleString()}</span>
+                  </td>
+                </tr>
+              )
+            })}
+            {/* Totals row */}
+            <tr className="border-t-2 border-dark-300">
+              <td className="py-2.5 pr-4 text-xs font-semibold text-slate-400">Total</td>
+              {['NEW_WORD', 'EASY', 'MEDIUM', 'HARD'].map(key => (
+                <td key={key} className="text-center py-2.5">
+                  <span className="text-xs font-semibold text-slate-300">
+                    {matrix.reduce((s, r) => s + (r[key] || 0), 0).toLocaleString()}
+                  </span>
+                </td>
+              ))}
+              <td className="text-center py-2.5">
+                <span className="text-xs font-bold text-slate-200">{stats.total.toLocaleString()}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   )
