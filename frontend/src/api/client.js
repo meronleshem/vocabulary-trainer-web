@@ -54,6 +54,7 @@ export const getRoadmapState        = ()            => api.get('/roadmap/state')
 export const getCurrentMission      = ()            => api.get('/roadmap/current-mission')
 export const getMissionQuiz         = (id, dir)     => api.get(`/roadmap/missions/${id}/quiz`, { params: { direction: dir } })
 export const submitMissionAttempt   = (id, data)    => api.post(`/roadmap/missions/${id}/attempt`, data)
+export const restartRoadmap         = ()            => api.post('/roadmap/restart')
 
 // ── SRS ───────────────────────────────────────────────────────────────────────
 export const getSRSDue    = (params) => api.get('/srs/due', { params })

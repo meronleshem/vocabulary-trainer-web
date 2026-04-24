@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  CheckCircle2, Lock, Play, Star, Zap, Trophy, ChevronRight, RefreshCw,
+  CheckCircle2, Lock, Play, Star, Zap, Trophy, ChevronRight, RefreshCw, RotateCcw, AlertTriangle,
 } from 'lucide-react'
-import { getRoadmapState, getCurrentMission } from '../api/client'
+import { getRoadmapState, getCurrentMission, restartRoadmap } from '../api/client'
 
 const TYPE_META = {
   group:        { label: 'Group',              color: 'text-primary-light',  bg: 'bg-primary/15',     border: 'border-primary/30'     },
@@ -169,8 +169,10 @@ function buildSequence(groups, missions, currentMission) {
 }
 
 export default function Roadmap() {
-  const [state, setState]   = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [state, setState]       = useState(null)
+  const [loading, setLoading]   = useState(true)
+  const [confirming, setConfirming] = useState(false)
+  const [restarting, setRestarting] = useState(false)
   const navigate = useNavigate()
 
   const load = () => {
@@ -182,6 +184,17 @@ export default function Roadmap() {
   }
 
   useEffect(() => { load() }, [])
+
+  const handleRestart = async () => {
+    setRestarting(true)
+    setConfirming(false)
+    try {
+      await restartRoadmap()
+      await load()
+    } finally {
+      setRestarting(false)
+    }
+  }
 
   const handleStart = (mission) => {
     navigate(`/mission/${mission.id}`)
@@ -207,15 +220,56 @@ export default function Roadmap() {
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
-          <Trophy size={22} className="text-amber-400" />
-          Learning Roadmap
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Complete groups and checkpoint quizzes to advance
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
+            <Trophy size={22} className="text-amber-400" />
+            Learning Roadmap
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Complete groups and checkpoint quizzes to advance
+          </p>
+        </div>
+        <button
+          onClick={() => setConfirming(true)}
+          disabled={restarting}
+          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 border border-dark-400 hover:border-dark-300 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+        >
+          <RotateCcw size={13} />
+          Restart
+        </button>
       </div>
+
+      {/* Restart confirmation dialog */}
+      {confirming && (
+        <div className="card border border-red-500/30 bg-red-500/5 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-slate-200">Restart Roadmap?</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                All progress will be cleared. The roadmap will be rebuilt from scratch,
+                including any new groups added since last time.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setConfirming(false)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-dark-400 text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRestart}
+              className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 transition-colors flex items-center gap-1.5"
+            >
+              <RotateCcw size={12} />
+              Yes, restart
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Overall progress */}
       <div className="card">

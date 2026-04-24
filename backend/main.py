@@ -2073,3 +2073,31 @@ def submit_mission_attempt(mission_id: int, body: MissionAttemptBody):
         conn.commit()
         conn.close()
         return {"passed": False, "score": score, "next_mission": None}
+
+
+@app.post("/api/roadmap/restart")
+def restart_roadmap():
+    """Reset all roadmap progress and re-sync groups from current vocabulary."""
+    conn = get_db()
+    conn.execute("DELETE FROM roadmap_missions")
+    conn.execute("DELETE FROM user_group_progress")
+    conn.execute("DELETE FROM roadmap_groups")
+
+    groups_raw = conn.execute(
+        "SELECT group_name, COUNT(*) as wc FROM vocabulary GROUP BY group_name"
+    ).fetchall()
+    sorted_groups = sorted(groups_raw, key=lambda r: natural_sort_key(r["group_name"]))
+    for i, row in enumerate(sorted_groups, 1):
+        conn.execute(
+            "INSERT INTO roadmap_groups (id, group_name, word_count) VALUES (?, ?, ?)",
+            (i, row["group_name"], row["wc"]),
+        )
+        conn.execute(
+            "INSERT INTO user_group_progress (group_id) VALUES (?)", (i,)
+        )
+
+    conn.commit()
+    first_mission = _resolve_current_mission(conn)
+    total = conn.execute("SELECT COUNT(*) FROM roadmap_groups").fetchone()[0]
+    conn.close()
+    return {"groups_total": total, "first_mission": first_mission}
