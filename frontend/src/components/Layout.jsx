@@ -14,11 +14,13 @@ import {
   TrendingUp,
   CalendarClock,
   BarChart2,
+  Map,
 } from 'lucide-react'
 import { useSRSStats } from '../hooks/useSRSStats'
 
 const NAV = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/roadmap',       icon: Map,             label: 'Roadmap' },
   { to: '/progress',      icon: TrendingUp,      label: 'Progress' },
   { to: '/statistics',   icon: BarChart2,       label: 'Statistics' },
   { to: '/srs',           icon: CalendarClock,   label: 'SRS Review', srs: true },

@@ -1804,3 +1804,272 @@ def get_srs_stats():
         "in_review": due_now - new_words,
         "upcoming":  upcoming,
     }
+
+
+# ── Roadmap / Progression System ─────────────────────────────────────────────
+
+def init_roadmap_db():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.executescript("""
+        CREATE TABLE IF NOT EXISTS roadmap_groups (
+            id INTEGER PRIMARY KEY,
+            group_name TEXT UNIQUE NOT NULL,
+            word_count INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS user_group_progress (
+            group_id INTEGER PRIMARY KEY,
+            is_completed INTEGER DEFAULT 0,
+            best_score REAL DEFAULT 0.0,
+            last_attempt_score REAL,
+            completed_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS roadmap_missions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mission_type TEXT NOT NULL,
+            related_group_ids TEXT NOT NULL,
+            word_pool_ids TEXT NOT NULL,
+            required_score REAL NOT NULL,
+            is_completed INTEGER DEFAULT 0,
+            attempts_count INTEGER DEFAULT 0,
+            best_score REAL DEFAULT 0.0,
+            created_at TEXT,
+            completed_at TEXT
+        );
+    """)
+    existing = cur.execute("SELECT COUNT(*) FROM roadmap_groups").fetchone()[0]
+    if existing == 0:
+        groups_raw = cur.execute(
+            "SELECT group_name, COUNT(*) as wc FROM vocabulary GROUP BY group_name"
+        ).fetchall()
+        sorted_groups = sorted(groups_raw, key=lambda r: natural_sort_key(r["group_name"]))
+        for i, row in enumerate(sorted_groups, 1):
+            cur.execute(
+                "INSERT OR IGNORE INTO roadmap_groups (id, group_name, word_count) VALUES (?, ?, ?)",
+                (i, row["group_name"], row["wc"]),
+            )
+            cur.execute(
+                "INSERT OR IGNORE INTO user_group_progress (group_id) VALUES (?)", (i,)
+            )
+    conn.commit()
+    conn.close()
+
+
+def _roadmap_row(row) -> dict:
+    d = dict(row)
+    d["related_group_ids"] = _json.loads(d["related_group_ids"])
+    d["word_pool_ids"] = _json.loads(d["word_pool_ids"])
+    return d
+
+
+def _build_word_pool(conn, group_ids: list) -> list:
+    ids = []
+    for gid in group_ids:
+        row = conn.execute("SELECT group_name FROM roadmap_groups WHERE id = ?", (gid,)).fetchone()
+        if row:
+            ids.extend(
+                r["id"] for r in conn.execute(
+                    "SELECT id FROM vocabulary WHERE group_name = ? ORDER BY id", (row["group_name"],)
+                ).fetchall()
+            )
+    return ids
+
+
+def _create_mission(conn, mission_type: str, group_ids: list) -> dict:
+    word_ids = _build_word_pool(conn, group_ids)
+    required = 0.95 if mission_type == "group" else 0.90
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """INSERT INTO roadmap_missions
+           (mission_type, related_group_ids, word_pool_ids, required_score, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (mission_type, _json.dumps(sorted(group_ids)), _json.dumps(word_ids), required, now),
+    )
+    conn.commit()
+    return _roadmap_row(
+        conn.execute("SELECT * FROM roadmap_missions WHERE id = ?", (cur.lastrowid,)).fetchone()
+    )
+
+
+def _resolve_current_mission(conn) -> Optional[dict]:
+    """Return or create the next mission the user should attempt."""
+    row = conn.execute(
+        "SELECT * FROM roadmap_missions WHERE is_completed = 0 ORDER BY id LIMIT 1"
+    ).fetchone()
+    if row:
+        return _roadmap_row(row)
+
+    total = conn.execute("SELECT COUNT(*) FROM roadmap_groups").fetchone()[0]
+    if total == 0:
+        return None
+
+    done_ids = [
+        r["group_id"]
+        for r in conn.execute(
+            "SELECT group_id FROM user_group_progress WHERE is_completed = 1 ORDER BY group_id"
+        ).fetchall()
+    ]
+    n = len(done_ids)
+
+    if n > 0 and n % 3 == 0:
+        last3 = done_ids[-3:]
+        mini_done = conn.execute(
+            "SELECT id FROM roadmap_missions WHERE mission_type = 'checkpoint_3' AND is_completed = 1 AND related_group_ids = ?",
+            (_json.dumps(sorted(last3)),),
+        ).fetchone()
+        if not mini_done:
+            return _create_mission(conn, "checkpoint_3", last3)
+
+        if n % 9 == 0:
+            major_done = conn.execute(
+                "SELECT id FROM roadmap_missions WHERE mission_type = 'checkpoint_9' AND is_completed = 1 AND related_group_ids = ?",
+                (_json.dumps(sorted(done_ids)),),
+            ).fetchone()
+            if not major_done:
+                return _create_mission(conn, "checkpoint_9", done_ids)
+
+    next_id = n + 1
+    if next_id > total:
+        return None
+    return _create_mission(conn, "group", [next_id])
+
+
+init_roadmap_db()
+
+
+class MissionAttemptBody(BaseModel):
+    score: float
+    correct_count: int
+    total_count: int
+
+
+@app.get("/api/roadmap/state")
+def get_roadmap_state():
+    conn = get_db()
+    groups = [
+        dict(r)
+        for r in conn.execute("""
+            SELECT rg.id, rg.group_name, rg.word_count,
+                   COALESCE(ugp.is_completed, 0)  AS is_completed,
+                   COALESCE(ugp.best_score, 0.0)  AS best_score,
+                   ugp.last_attempt_score, ugp.completed_at
+            FROM roadmap_groups rg
+            LEFT JOIN user_group_progress ugp ON ugp.group_id = rg.id
+            ORDER BY rg.id
+        """).fetchall()
+    ]
+    missions = [
+        _roadmap_row(r)
+        for r in conn.execute("SELECT * FROM roadmap_missions ORDER BY id").fetchall()
+    ]
+    active = conn.execute(
+        "SELECT * FROM roadmap_missions WHERE is_completed = 0 ORDER BY id LIMIT 1"
+    ).fetchone()
+    conn.close()
+    return {
+        "groups": groups,
+        "missions": missions,
+        "current_mission": _roadmap_row(active) if active else None,
+    }
+
+
+@app.get("/api/roadmap/current-mission")
+def get_current_mission():
+    conn = get_db()
+    mission = _resolve_current_mission(conn)
+    conn.close()
+    return mission
+
+
+@app.get("/api/roadmap/missions/{mission_id}/quiz")
+def get_mission_quiz(mission_id: int, direction: str = "eng_to_heb"):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM roadmap_missions WHERE id = ?", (mission_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "Mission not found")
+
+    mission = _roadmap_row(row)
+    pool = mission["word_pool_ids"]
+    quiz_size = {"group": len(pool), "checkpoint_3": 40, "checkpoint_9": 100}
+    count = min(quiz_size.get(mission["mission_type"], 40), len(pool))
+    selected = random.sample(pool, count)
+
+    placeholders = ",".join(["?"] * len(selected))
+    words = [
+        dict(r)
+        for r in conn.execute(
+            f"SELECT * FROM vocabulary WHERE id IN ({placeholders})", selected
+        ).fetchall()
+    ]
+    distractor_pool = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT hebWord, engWord FROM vocabulary ORDER BY RANDOM() LIMIT 300"
+        ).fetchall()
+    ]
+    conn.close()
+
+    questions = []
+    for word in words:
+        q_text = word["engWord"] if direction == "eng_to_heb" else word["hebWord"]
+        correct = word["hebWord"] if direction == "eng_to_heb" else word["engWord"]
+        d_field = "hebWord" if direction == "eng_to_heb" else "engWord"
+        distractors = list({p[d_field] for p in distractor_pool if p[d_field] != correct})
+        random.shuffle(distractors)
+        options = distractors[:3] + [correct]
+        random.shuffle(options)
+        questions.append({"id": word["id"], "question": q_text, "correct": correct, "options": options, "word": word})
+
+    random.shuffle(questions)
+    return {"questions": questions, "mission": mission}
+
+
+@app.post("/api/roadmap/missions/{mission_id}/attempt")
+def submit_mission_attempt(mission_id: int, body: MissionAttemptBody):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM roadmap_missions WHERE id = ?", (mission_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "Mission not found")
+
+    mission = _roadmap_row(row)
+    if mission["is_completed"]:
+        conn.close()
+        return {"passed": True, "score": mission["best_score"], "next_mission": None}
+
+    score = body.score
+    passed = score >= mission["required_score"]
+    now = datetime.now(timezone.utc).isoformat()
+    new_attempts = mission["attempts_count"] + 1
+    new_best = max(mission["best_score"], score)
+
+    if passed:
+        conn.execute(
+            "UPDATE roadmap_missions SET is_completed=1, attempts_count=?, best_score=?, completed_at=? WHERE id=?",
+            (new_attempts, new_best, now, mission_id),
+        )
+        if mission["mission_type"] == "group":
+            gid = mission["related_group_ids"][0]
+            conn.execute(
+                "UPDATE user_group_progress SET is_completed=1, best_score=?, last_attempt_score=?, completed_at=? WHERE group_id=?",
+                (score, score, now, gid),
+            )
+        conn.commit()
+        next_m = _resolve_current_mission(conn)
+        conn.close()
+        return {"passed": True, "score": score, "next_mission": next_m}
+    else:
+        conn.execute(
+            "UPDATE roadmap_missions SET attempts_count=?, best_score=? WHERE id=?",
+            (new_attempts, new_best, mission_id),
+        )
+        if mission["mission_type"] == "group":
+            gid = mission["related_group_ids"][0]
+            conn.execute(
+                "UPDATE user_group_progress SET last_attempt_score=? WHERE group_id=?",
+                (score, gid),
+            )
+        conn.commit()
+        conn.close()
+        return {"passed": False, "score": score, "next_mission": None}

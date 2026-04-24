@@ -10,6 +10,8 @@ import StudySession from './pages/StudySession'
 import Progress from './pages/Progress'
 import SRSReview from './pages/SRSReview'
 import Statistics from './pages/Statistics'
+import Roadmap from './pages/Roadmap'
+import MissionQuiz from './pages/MissionQuiz'
 
 export default function App() {
   return (
@@ -17,6 +19,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/roadmap" element={<Roadmap />} />
+        <Route path="/mission/:missionId" element={<MissionQuiz />} />
         <Route path="/browse" element={<Browse />} />
         <Route path="/study" element={<Study />} />
         <Route path="/quiz" element={<Quiz />} />

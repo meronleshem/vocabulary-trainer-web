@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(sqlite3 /c/Projects/VocabularyApp/Database/vocabulary.db \".schema\")",
-      "Bash(python3)"
+      "Bash(python3)",
+      "Bash(python -c \"import backend.main; print\\('OK'\\)\")",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, 'backend'\\); import main; print\\('OK'\\)\")",
+      "Bash(python -c ' *)"
     ]
   }
 }

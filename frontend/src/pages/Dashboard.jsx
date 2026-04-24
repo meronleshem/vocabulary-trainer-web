@@ -4,11 +4,101 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
-import { BookOpen, Brain, Trophy, Layers, CalendarClock, ArrowRight } from 'lucide-react'
-import { getStats } from '../api/client'
+import { BookOpen, Brain, Trophy, Layers, CalendarClock, ArrowRight, Map, Play, RefreshCw, Zap } from 'lucide-react'
+import { getStats, getRoadmapState, getCurrentMission } from '../api/client'
 import { useSRSStats } from '../hooks/useSRSStats'
 import StatsCard from '../components/StatsCard'
 import DifficultyBadge from '../components/DifficultyBadge'
+
+const MISSION_TYPE_META = {
+  group:        { label: 'Group Mission',     color: 'text-primary-light', bg: 'bg-primary/15'   },
+  checkpoint_3: { label: 'Mini Checkpoint',   color: 'text-amber-400',     bg: 'bg-amber-500/15' },
+  checkpoint_9: { label: 'Master Checkpoint', color: 'text-purple-400',    bg: 'bg-purple-500/15'},
+}
+
+function CurrentMissionWidget() {
+  const [mission, setMission]   = useState(undefined) // undefined=loading, null=none
+  const [groups, setGroups]     = useState([])
+
+  useEffect(() => {
+    getCurrentMission()
+      .then((r) => setMission(r.data))
+      .catch(() => setMission(null))
+    getRoadmapState()
+      .then((r) => setGroups(r.data.groups || []))
+      .catch(() => {})
+  }, [])
+
+  if (mission === undefined) return null
+  if (!mission) return null
+
+  const meta = MISSION_TYPE_META[mission.mission_type] || MISSION_TYPE_META.group
+  const totalGroups     = groups.length
+  const completedGroups = groups.filter((g) => g.is_completed).length
+  const progressPct     = totalGroups ? Math.round((completedGroups / totalGroups) * 100) : 0
+
+  let missionTitle = ''
+  if (mission.mission_type === 'group') {
+    const gid = mission.related_group_ids?.[0]
+    const grp = groups.find((g) => g.id === gid)
+    missionTitle = grp ? `Group ${gid}: ${grp.group_name.replace(/_/g, ' ')}` : `Group ${gid}`
+  } else if (mission.mission_type === 'checkpoint_3') {
+    const ids = mission.related_group_ids || []
+    missionTitle = `Mini Checkpoint: Groups ${ids[0]}–${ids[ids.length - 1]}`
+  } else {
+    const ids = mission.related_group_ids || []
+    missionTitle = `Master Checkpoint: Groups 1–${ids[ids.length - 1]}`
+  }
+
+  const requiredPct = Math.round((mission.required_score ?? 0.9) * 100)
+
+  return (
+    <div className="card border border-primary/20 bg-primary/5">
+      <div className="flex items-center gap-2 mb-3">
+        <Zap size={15} className="text-primary-light" />
+        <span className="text-xs font-semibold text-primary-light uppercase tracking-wide">Current Mission</span>
+      </div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${meta.bg} ${meta.color}`}>
+              {meta.label}
+            </span>
+            {mission.attempts_count > 0 && (
+              <span className="text-xs text-slate-500">
+                Attempt #{mission.attempts_count + 1}
+              </span>
+            )}
+          </div>
+          <p className="font-semibold text-slate-100 text-sm truncate">{missionTitle}</p>
+          <p className="text-xs text-slate-500 mt-0.5">Pass with ≥{requiredPct}%</p>
+
+          {totalGroups > 0 && (
+            <div className="mt-2">
+              <div className="flex justify-between text-xs text-slate-500 mb-1">
+                <span>Overall progress</span>
+                <span>{completedGroups}/{totalGroups} groups</span>
+              </div>
+              <div className="h-1.5 bg-dark-500 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        <Link
+          to={`/mission/${mission.id}`}
+          className="btn-primary flex-shrink-0 flex items-center gap-1.5 text-sm px-4 py-2"
+        >
+          {mission.attempts_count > 0 ? <RefreshCw size={13} /> : <Play size={13} />}
+          {mission.attempts_count > 0 ? 'Retry' : 'Start'}
+        </Link>
+      </div>
+    </div>
+  )
+}
 
 const DIFF_COLORS = {
   EASY: '#10b981',
@@ -131,6 +221,9 @@ export default function Dashboard() {
           color="text-emerald-400"
         />
       </div>
+
+      {/* Current Mission widget */}
+      <CurrentMissionWidget />
 
       {/* SRS widget */}
       {srsStats && srsStats.due_now > 0 && (
