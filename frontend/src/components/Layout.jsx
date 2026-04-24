@@ -14,6 +14,7 @@ import {
   TrendingUp,
   CalendarClock,
   BarChart2,
+  Flame,
 } from 'lucide-react'
 import { useSRSStats } from '../hooks/useSRSStats'
 
@@ -21,7 +22,8 @@ const NAV = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/progress',      icon: TrendingUp,      label: 'Progress' },
   { to: '/statistics',   icon: BarChart2,       label: 'Statistics' },
-  { to: '/srs',           icon: CalendarClock,   label: 'SRS Review', srs: true },
+  { to: '/daily-review',  icon: CalendarClock,   label: 'Daily Review', srs: true },
+  { to: '/weak-words',    icon: Flame,           label: 'Weak Words' },
   { to: '/browse',        icon: Search,          label: 'Browse' },
   { to: '/study',         icon: Brain,           label: 'Flashcards' },
   { to: '/study-session', icon: GraduationCap,   label: 'Study Session' },

@@ -136,6 +136,8 @@ def init_progress_db():
         "ALTER TABLE word_progress ADD COLUMN srs_easiness REAL NOT NULL DEFAULT 2.5",
         "ALTER TABLE word_progress ADD COLUMN srs_repetitions INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE word_progress ADD COLUMN srs_next_review TEXT DEFAULT NULL",
+        # Weak-word tracking
+        "ALTER TABLE word_progress ADD COLUMN weak_count INTEGER NOT NULL DEFAULT 0",
     ]
     for sql in migrations:
         try:
@@ -342,7 +344,7 @@ def _sm2(interval: int, easiness: float, repetitions: int, quality: int):
 
 
 # Difficulty → SM-2 quality mapping (used when flashcard is rated)
-DIFF_TO_QUALITY = {"EASY": 5, "MEDIUM": 3, "HARD": 1}
+DIFF_TO_QUALITY = {"EASY": 5, "MEDIUM": 3, "HARD": 1, "DONT_KNOW": 0}
 
 
 # ── Words ────────────────────────────────────────────────────────────────────
@@ -693,7 +695,7 @@ def delete_word(word_id: int):
 
 @app.patch("/api/words/{word_id}/difficulty")
 def patch_difficulty(word_id: int, body: DifficultyUpdate):
-    valid = {"EASY", "MEDIUM", "HARD", "NEW_WORD"}
+    valid = {"EASY", "MEDIUM", "HARD", "NEW_WORD", "DONT_KNOW"}
     if body.difficulty not in valid:
         raise HTTPException(400, "Invalid difficulty value")
     conn = get_db()
@@ -708,8 +710,10 @@ def patch_difficulty(word_id: int, body: DifficultyUpdate):
         "INSERT INTO difficulty_history (date, word_id, difficulty) VALUES (?, ?, ?)",
         (today_str, word_id, body.difficulty),
     )
-    # Mark word as learned when explicitly rated (not NEW_WORD)
-    if body.difficulty in {"EASY", "MEDIUM", "HARD"}:
+    # Mark word as learned (seen) when explicitly rated — even DONT_KNOW
+    if body.difficulty in {"EASY", "MEDIUM", "HARD", "DONT_KNOW"}:
+        # DONT_KNOW gets no correct_count credit; others get LEARN_THRESHOLD
+        correct_credit = 0 if body.difficulty == "DONT_KNOW" else LEARN_THRESHOLD
         cur.execute("""
             INSERT INTO word_progress (word_id, correct_count, learned, learned_at)
             VALUES (?, ?, 1, ?)
@@ -717,7 +721,15 @@ def patch_difficulty(word_id: int, body: DifficultyUpdate):
                 learned = 1,
                 learned_at = COALESCE(word_progress.learned_at, excluded.learned_at),
                 correct_count = MAX(word_progress.correct_count, excluded.correct_count)
-        """, (word_id, LEARN_THRESHOLD, today_str))
+        """, (word_id, correct_credit, today_str))
+
+        # Increment weak_count when user explicitly marks HARD or DONT_KNOW
+        if body.difficulty in {"HARD", "DONT_KNOW"}:
+            cur.execute("""
+                UPDATE word_progress
+                SET weak_count = COALESCE(weak_count, 0) + 1
+                WHERE word_id = ?
+            """, (word_id,))
 
         # Apply SRS update based on difficulty rating
         quality = DIFF_TO_QUALITY[body.difficulty]
@@ -1324,28 +1336,65 @@ def get_sessions(limit: int = Query(50, ge=1, le=1000)):
     return rows
 
 
-@app.get("/api/progress/weak-words")
-def get_weak_words():
-    """Return words with accuracy below 60% and at least 3 attempts."""
+@app.get("/api/progress/weak-words/count")
+def get_weak_words_count():
+    """Return the total count of words rated HARD or DONT_KNOW."""
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT
-            v.id, v.engWord, v.hebWord, v.difficulty, v.group_name,
-            wp.correct_count,
-            wp.attempt_count,
-            ROUND(CAST(wp.correct_count AS FLOAT) / wp.attempt_count * 100) AS accuracy_pct,
-            wp.last_attempt_date
-        FROM word_progress wp
-        JOIN vocabulary v ON v.id = wp.word_id
-        WHERE wp.attempt_count >= 3
-          AND CAST(wp.correct_count AS FLOAT) / wp.attempt_count < 0.6
-        ORDER BY CAST(wp.correct_count AS FLOAT) / wp.attempt_count ASC
-        LIMIT 30
-    """)
-    rows = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT COUNT(*) as cnt FROM vocabulary WHERE difficulty IN ('HARD', 'DONT_KNOW')")
+    count = cur.fetchone()["cnt"]
     conn.close()
-    return rows
+    return {"count": count}
+
+
+@app.get("/api/progress/weak-words")
+def get_weak_words(
+    kind: str = Query("all"),      # all | hard | dont_know
+    sort_by: str = Query("weak_count"),  # weak_count | last_seen | difficulty
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """Return words rated HARD or DONT_KNOW, ordered by struggle frequency."""
+    if kind == "hard":
+        diff_clause = "v.difficulty = 'HARD'"
+    elif kind == "dont_know":
+        diff_clause = "v.difficulty = 'DONT_KNOW'"
+    else:
+        diff_clause = "v.difficulty IN ('HARD', 'DONT_KNOW')"
+
+    if sort_by == "last_seen":
+        order_clause = "wp.last_attempt_date DESC NULLS LAST, COALESCE(wp.weak_count, 0) DESC"
+    elif sort_by == "difficulty":
+        order_clause = "CASE v.difficulty WHEN 'DONT_KNOW' THEN 0 WHEN 'HARD' THEN 1 END, COALESCE(wp.weak_count, 0) DESC"
+    else:
+        order_clause = "COALESCE(wp.weak_count, 0) DESC, wp.last_attempt_date DESC NULLS LAST"
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(f"SELECT COUNT(*) as cnt FROM vocabulary v WHERE {diff_clause}")
+    total = cur.fetchone()["cnt"]
+
+    cur.execute(f"""
+        SELECT
+            v.id, v.engWord, v.hebWord, v.difficulty, v.group_name, v.image_url,
+            COALESCE(wp.weak_count, 0)    AS weak_count,
+            wp.last_attempt_date,
+            COALESCE(wp.attempt_count, 0) AS attempt_count,
+            CASE
+                WHEN COALESCE(wp.attempt_count, 0) > 0
+                THEN ROUND(CAST(COALESCE(wp.correct_count, 0) AS FLOAT) / wp.attempt_count * 100)
+                ELSE NULL
+            END AS accuracy_pct
+        FROM vocabulary v
+        LEFT JOIN word_progress wp ON wp.word_id = v.id
+        WHERE {diff_clause}
+        ORDER BY {order_clause}
+        LIMIT ? OFFSET ?
+    """, (limit, offset))
+    words = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return {"count": total, "words": words}
 
 
 @app.get("/api/progress/trends")
@@ -1803,4 +1852,63 @@ def get_srs_stats():
         "new_words": new_words,
         "in_review": due_now - new_words,
         "upcoming":  upcoming,
+    }
+
+
+@app.get("/api/srs/daily-review")
+def get_srs_daily_review():
+    """Return today's SRS queue capped at the remaining daily goal, with goal metadata."""
+    today_str = date.today().isoformat()
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT daily_goal FROM user_progress WHERE id = 1")
+    row = cur.fetchone()
+    daily_goal = row["daily_goal"] if row else 10
+
+    cur.execute(
+        "SELECT COALESCE(words_studied, 0) as cnt FROM daily_activity WHERE date = ?",
+        (today_str,),
+    )
+    row = cur.fetchone()
+    words_done_today = row["cnt"] if row else 0
+
+    cur.execute("""
+        SELECT COUNT(*) as cnt FROM vocabulary v
+        LEFT JOIN word_progress wp ON wp.word_id = v.id
+        WHERE wp.srs_next_review IS NULL OR wp.srs_next_review <= ?
+    """, (today_str,))
+    total_due = cur.fetchone()["cnt"]
+
+    remaining = max(0, daily_goal - words_done_today)
+    limit = min(total_due, remaining)
+
+    words = []
+    if limit > 0:
+        cur.execute("""
+            SELECT
+                v.*,
+                COALESCE(wp.srs_interval,    1)   AS srs_interval,
+                COALESCE(wp.srs_easiness,    2.5) AS srs_easiness,
+                COALESCE(wp.srs_repetitions, 0)   AS srs_repetitions,
+                wp.srs_next_review,
+                CASE
+                    WHEN wp.srs_next_review IS NULL THEN NULL
+                    ELSE CAST(julianday(?) - julianday(wp.srs_next_review) AS INTEGER)
+                END AS days_overdue
+            FROM vocabulary v
+            LEFT JOIN word_progress wp ON wp.word_id = v.id
+            WHERE (wp.srs_next_review IS NULL OR wp.srs_next_review <= ?)
+            ORDER BY wp.srs_next_review ASC
+            LIMIT ?
+        """, [today_str, today_str, limit])
+        words = [dict(r) for r in cur.fetchall()]
+
+    conn.close()
+    return {
+        "words":           words,
+        "daily_goal":      daily_goal,
+        "words_done_today": words_done_today,
+        "remaining":       remaining,
+        "total_due":       total_due,
     }

@@ -38,8 +38,9 @@ export const recordAnswer = (word_id, correct) => api.post('/progress/record-ans
 export const recordSession = (session_type, word_ids = [], extras = {}) =>
   api.post('/progress/record-session', { session_type, word_ids, ...extras })
 export const patchDailyGoal = (daily_goal) => api.patch('/progress/daily-goal', { daily_goal })
-export const getDifficultyTracking = () => api.get('/progress/difficulty-tracking')
-export const getWeakWords = () => api.get('/progress/weak-words')
+export const getDifficultyTracking  = () => api.get('/progress/difficulty-tracking')
+export const getWeakWords           = (params) => api.get('/progress/weak-words', { params })
+export const getWeakWordsCount      = () => api.get('/progress/weak-words/count')
 export const getTrends = (period = 'weekly') => api.get('/progress/trends', { params: { period } })
 export const getSessions = (limit) => api.get('/sessions', { params: limit ? { limit } : {} })
 
@@ -50,9 +51,10 @@ export const getStatsVelocity    = () => api.get('/stats/velocity')
 export const getStatsHabits      = () => api.get('/stats/habits')
 
 // ── SRS ───────────────────────────────────────────────────────────────────────
-export const getSRSDue    = (params) => api.get('/srs/due', { params })
-export const getSRSStats  = ()       => api.get('/srs/stats')
-export const postSRSReview = (word_id, quality) =>
+export const getSRSDue      = (params) => api.get('/srs/due', { params })
+export const getSRSStats    = ()       => api.get('/srs/stats')
+export const getDailyReview = ()       => api.get('/srs/daily-review')
+export const postSRSReview  = (word_id, quality) =>
   api.post('/srs/review', { word_id, quality })
 
 export default api

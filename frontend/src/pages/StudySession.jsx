@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Volume2, CheckCircle, XCircle, Trophy, RefreshCw,
   ArrowRight, Search, X, Loader2, Eye, Headphones,
@@ -700,6 +701,7 @@ function SessionResults({ score, mistakes, totalWords, onRetry, onNew }) {
 // ── Main StudySession ─────────────────────────────────────────────────────────
 
 export default function StudySession() {
+  const location = useLocation()
   const [phase, setPhase] = useState('select')
   const [preparedWords, setPreparedWords] = useState([])
   const [stage, setStage] = useState(1)
@@ -726,6 +728,16 @@ export default function StudySession() {
     sessionStartRef.current = Date.now()
     setPhase('session')
   }, [])
+
+  // Auto-start when word IDs are passed via router state (e.g. from Weak Words page)
+  useEffect(() => {
+    const ids = location.state?.initialWordIds
+    if (!ids?.length) return
+    setPhase('loading')
+    getStudySession(ids)
+      .then((res) => startSession(res.data))
+      .catch(() => setPhase('select'))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAnswer = useCallback((correct, option) => {
     if (answered) return
@@ -790,6 +802,12 @@ export default function StudySession() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [phase, answered, handleNext, handleAnswer, currentWord, stage])
+
+  if (phase === 'loading') return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   if (phase === 'select') return <WordSelector onStart={startSession} />
 

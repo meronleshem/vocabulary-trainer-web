@@ -3,6 +3,7 @@ export const DIFF_LABELS = {
   MEDIUM: 'Medium',
   HARD: 'Hard',
   NEW_WORD: 'New',
+  DONT_KNOW: "Don't Know",
 }
 
 export const DIFF_COLORS = {
@@ -10,6 +11,7 @@ export const DIFF_COLORS = {
   MEDIUM: 'badge-medium',
   HARD: 'badge-hard',
   NEW_WORD: 'badge-new',
+  DONT_KNOW: 'badge-dont-know',
 }
 
 export const DIFF_DOT = {
@@ -17,6 +19,7 @@ export const DIFF_DOT = {
   MEDIUM: 'bg-amber-400',
   HARD: 'bg-red-400',
   NEW_WORD: 'bg-violet-400',
+  DONT_KNOW: 'bg-rose-400',
 }
 
 export default function DifficultyBadge({ difficulty }) {

@@ -10,16 +10,18 @@ import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
 
 const DIFF_BUTTONS = [
-  { key: 'EASY', label: 'Easy', cls: 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/20' },
-  { key: 'MEDIUM', label: 'Medium', cls: 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/30 border border-amber-500/20' },
-  { key: 'HARD', label: 'Hard', cls: 'bg-red-500/15 text-red-400 hover:bg-red-500/30 border border-red-500/20' },
+  { key: 'EASY',      label: 'Easy',       cls: 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/20' },
+  { key: 'MEDIUM',    label: 'Medium',     cls: 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/30 border border-amber-500/20' },
+  { key: 'HARD',      label: 'Hard',       cls: 'bg-red-500/15 text-red-400 hover:bg-red-500/30 border border-red-500/20' },
+  { key: 'DONT_KNOW', label: "Don't Know", cls: 'bg-rose-900/20 text-rose-300 hover:bg-rose-900/40 border border-rose-500/20' },
 ]
 
 const DIFF_BG_CARD = {
-  NEW_WORD: 'border-violet-500/40 bg-violet-900/10',
-  EASY: 'border-emerald-500/40 bg-emerald-900/10',
-  MEDIUM: 'border-amber-500/40 bg-amber-900/10',
-  HARD: 'border-red-500/40 bg-red-900/10',
+  NEW_WORD:  'border-violet-500/40 bg-violet-900/10',
+  EASY:      'border-emerald-500/40 bg-emerald-900/10',
+  MEDIUM:    'border-amber-500/40 bg-amber-900/10',
+  HARD:      'border-red-500/40 bg-red-900/10',
+  DONT_KNOW: 'border-rose-500/40 bg-rose-900/10',
 }
 
 const speak = (text, lang = 'en-US') => {
@@ -118,6 +120,7 @@ export default function Study() {
       if (e.key === '1') markDifficulty('EASY')
       if (e.key === '2') markDifficulty('MEDIUM')
       if (e.key === '3') markDifficulty('HARD')
+      if (e.key === '4') markDifficulty('DONT_KNOW')
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -215,9 +218,10 @@ export default function Study() {
 
   if (idx >= words.length) {
     const markedCount = Object.keys(marked).length
-    const easy = Object.values(marked).filter((d) => d === 'EASY').length
-    const medium = Object.values(marked).filter((d) => d === 'MEDIUM').length
-    const hard = Object.values(marked).filter((d) => d === 'HARD').length
+    const easy      = Object.values(marked).filter((d) => d === 'EASY').length
+    const medium    = Object.values(marked).filter((d) => d === 'MEDIUM').length
+    const hard      = Object.values(marked).filter((d) => d === 'HARD').length
+    const dontKnow  = Object.values(marked).filter((d) => d === 'DONT_KNOW').length
 
     return (
       <div className="max-w-lg mx-auto mt-8 space-y-6 animate-fade-in">
@@ -227,10 +231,11 @@ export default function Study() {
           <p className="text-slate-400">You reviewed {session.total} words</p>
 
           {markedCount > 0 && (
-            <div className="flex justify-center gap-4 text-sm">
+            <div className="flex justify-center flex-wrap gap-4 text-sm">
               <span className="text-emerald-400">Easy: {easy}</span>
               <span className="text-amber-400">Medium: {medium}</span>
               <span className="text-red-400">Hard: {hard}</span>
+              {dontKnow > 0 && <span className="text-rose-300">Don't Know: {dontKnow}</span>}
             </div>
           )}
 
@@ -345,7 +350,7 @@ export default function Study() {
       </div>
 
       {/* Difficulty buttons */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-2">
         {DIFF_BUTTONS.map((b) => (
           <button
             key={b.key}
@@ -366,7 +371,7 @@ export default function Study() {
         >
           <ChevronLeft size={16} /> Prev
         </button>
-        <p className="text-xs text-slate-600">Space to flip · 1/2/3 to mark · ←/→ to navigate</p>
+        <p className="text-xs text-slate-600">Space to flip · 1/2/3/4 to mark · ←/→ to navigate</p>
         <button
           onClick={goNext}
           disabled={idx >= words.length - 1}

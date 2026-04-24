@@ -9,6 +9,8 @@ import Books from './pages/Books'
 import StudySession from './pages/StudySession'
 import Progress from './pages/Progress'
 import SRSReview from './pages/SRSReview'
+import DailyReview from './pages/DailyReview'
+import WeakWords from './pages/WeakWords'
 import Statistics from './pages/Statistics'
 
 export default function App() {
@@ -25,6 +27,8 @@ export default function App() {
         <Route path="/study-session" element={<StudySession />} />
         <Route path="/progress" element={<Progress />} />
         <Route path="/srs" element={<SRSReview />} />
+        <Route path="/daily-review" element={<DailyReview />} />
+        <Route path="/weak-words" element={<WeakWords />} />
         <Route path="/statistics" element={<Statistics />} />
       </Routes>
     </Layout>

@@ -4,8 +4,8 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
-import { BookOpen, Brain, Trophy, Layers, CalendarClock, ArrowRight } from 'lucide-react'
-import { getStats } from '../api/client'
+import { BookOpen, Brain, Trophy, Layers, CalendarClock, ArrowRight, Flame } from 'lucide-react'
+import { getStats, getWeakWordsCount } from '../api/client'
 import { useSRSStats } from '../hooks/useSRSStats'
 import StatsCard from '../components/StatsCard'
 import DifficultyBadge from '../components/DifficultyBadge'
@@ -47,12 +47,16 @@ const CustomTooltip = ({ active, payload }) => {
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [weakCount, setWeakCount] = useState(null)
   const { stats: srsStats } = useSRSStats()
 
   useEffect(() => {
     getStats()
       .then((s) => setStats(s.data))
       .finally(() => setLoading(false))
+    getWeakWordsCount()
+      .then((r) => setWeakCount(r.data.count))
+      .catch(() => {})
   }, [])
 
   if (loading) {
@@ -149,10 +153,10 @@ export default function Dashboard() {
             </div>
           </div>
           <Link
-            to="/srs"
+            to="/daily-review"
             className="btn-primary flex-shrink-0 text-sm px-4 py-1.5"
           >
-            Review now
+            Start today's review
           </Link>
         </div>
       )}
@@ -297,10 +301,11 @@ export default function Dashboard() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {[
           { to: '/study', label: 'Start Flashcards', desc: 'Study with flip cards', icon: Brain, color: 'border-primary/30 hover:border-primary/60' },
           { to: '/quiz', label: 'Take a Quiz', desc: 'Test your knowledge', icon: Trophy, color: 'border-amber-500/30 hover:border-amber-500/60' },
+          { to: '/weak-words', label: 'Weak Words', desc: weakCount != null ? `${weakCount} word${weakCount !== 1 ? 's' : ''} to focus on` : 'Hard & Don\'t Know', icon: Flame, color: 'border-rose-500/30 hover:border-rose-500/60' },
           { to: '/browse', label: 'Browse Words', desc: 'Search & manage', icon: BookOpen, color: 'border-emerald-500/30 hover:border-emerald-500/60' },
         ].map((a) => (
           <Link
