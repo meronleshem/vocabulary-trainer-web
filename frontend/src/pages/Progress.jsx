@@ -446,7 +446,6 @@ const SESSION_TYPE_LABELS = {
   fill_quiz:     'Fill in Blank',
   study:         'Flashcards',
   study_session: 'Study Session',
-  srs:           'SRS Review',
 }
 
 const SESSION_TYPE_COLORS = {
@@ -454,7 +453,6 @@ const SESSION_TYPE_COLORS = {
   fill_quiz:     'text-violet-400  bg-violet-500/10  border-violet-500/25',
   study:         'text-blue-400    bg-blue-500/10    border-blue-500/25',
   study_session: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
-  srs:           'text-primary-light bg-primary/10   border-primary/25',
 }
 
 // dot color per session type (solid, for calendar cells)
@@ -463,7 +461,6 @@ const SESSION_DOT_COLORS = {
   fill_quiz:     'bg-violet-400',
   study:         'bg-blue-400',
   study_session: 'bg-emerald-400',
-  srs:           'bg-primary-light',
 }
 
 function fmtTime(iso) {

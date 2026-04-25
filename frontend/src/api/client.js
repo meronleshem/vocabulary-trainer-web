@@ -59,10 +59,4 @@ export const getMissionQuiz         = (id, dir)     => api.get(`/roadmap/mission
 export const submitMissionAttempt   = (id, data)    => api.post(`/roadmap/missions/${id}/attempt`, data)
 export const restartRoadmap         = ()            => api.post('/roadmap/restart')
 
-// ── SRS ───────────────────────────────────────────────────────────────────────
-export const getSRSDue    = (params) => api.get('/srs/due', { params })
-export const getSRSStats  = ()       => api.get('/srs/stats')
-export const postSRSReview = (word_id, quality) =>
-  api.post('/srs/review', { word_id, quality })
-
 export default api

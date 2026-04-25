@@ -9,7 +9,7 @@ import {
   Layers, Brain, CheckCircle2, AlertTriangle, Image,
 } from 'lucide-react'
 import {
-  getStats, getProgress, getSRSStats,
+  getStats, getProgress,
   getStatsPerformance, getStatsVelocity, getStatsHabits,
   getStatsFreqDifficulty,
 } from '../api/client'
@@ -22,11 +22,11 @@ const FREQ_LABELS  = { 1: 'Essential', 2: 'Very Common', 3: 'Common', 4: 'Useful
 const FREQ_COLORS  = { 1: '#10b981', 2: '#3b82f6', 3: '#f59e0b', 4: '#f97316', 5: '#ef4444' }
 const SESSION_LABELS = {
   quiz: 'Quiz', fill_quiz: 'Fill-in-Blank',
-  study: 'Flashcards', study_session: 'Study Session', srs: 'SRS Review',
+  study: 'Flashcards', study_session: 'Study Session',
 }
 const SESSION_COLORS = {
   quiz: '#6366f1', fill_quiz: '#f59e0b',
-  study: '#10b981', study_session: '#3b82f6', srs: '#a855f7',
+  study: '#10b981', study_session: '#3b82f6',
 }
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
@@ -75,18 +75,6 @@ function CoveragePill({ icon: Icon, label, value, total, color, invert = false }
   )
 }
 
-function SRSStageCard({ label, count, borderColor, dotColor, desc }) {
-  return (
-    <div className={`card border ${borderColor} p-4`}>
-      <div className="flex items-center gap-2 mb-1">
-        <span className={`w-2 h-2 rounded-full ${dotColor}`} />
-        <span className="text-xs text-slate-400 font-medium">{label}</span>
-      </div>
-      <p className="text-2xl font-bold text-slate-100">{count.toLocaleString()}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
-    </div>
-  )
-}
 
 function WordAccTable({ title, words, color }) {
   if (!words.length) return null
@@ -120,16 +108,14 @@ export default function Statistics() {
     Promise.all([
       getStats(),
       getProgress(),
-      getSRSStats(),
       getStatsPerformance(),
       getStatsVelocity(),
       getStatsHabits(),
       getStatsFreqDifficulty(),
-    ]).then(([statsR, progressR, srsR, perfR, velocityR, habitsR, matrixR]) => {
+    ]).then(([statsR, progressR, perfR, velocityR, habitsR, matrixR]) => {
       setData({
         stats:    statsR.data,
         progress: progressR.data,
-        srs:      srsR.data,
         perf:     perfR.data,
         velocity: velocityR.data,
         habits:   habitsR.data,
@@ -141,7 +127,7 @@ export default function Statistics() {
   if (loading) return <Spinner />
   if (!data)   return <p className="text-slate-500">Failed to load statistics.</p>
 
-  const { stats, progress, srs, perf, velocity, habits, matrix } = data
+  const { stats, progress, perf, velocity, habits, matrix } = data
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const totalCorrect  = perf.by_session_type.reduce((s, t) => s + (t.total_correct  || 0), 0)
@@ -325,61 +311,7 @@ export default function Statistics() {
         </div>
       </div>
 
-      {/* ── 3. SRS Health ───────────────────────────────────────────────────── */}
-      <div>
-        <SectionTitle>SRS Card Health</SectionTitle>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <SRSStageCard
-            label="New"
-            count={perf.srs_stages.new}
-            borderColor="border-violet-500/30"
-            dotColor="bg-violet-500"
-            desc="Never reviewed"
-          />
-          <SRSStageCard
-            label="Learning"
-            count={perf.srs_stages.learning}
-            borderColor="border-blue-500/30"
-            dotColor="bg-blue-500"
-            desc="Interval ≤ 7 days"
-          />
-          <SRSStageCard
-            label="Young"
-            count={perf.srs_stages.young}
-            borderColor="border-amber-500/30"
-            dotColor="bg-amber-500"
-            desc="8–21 days"
-          />
-          <SRSStageCard
-            label="Mature"
-            count={perf.srs_stages.mature}
-            borderColor="border-emerald-500/30"
-            dotColor="bg-emerald-500"
-            desc="21+ days"
-          />
-        </div>
-        <div className="flex flex-wrap gap-6 mt-3 px-1">
-          <span className="text-xs text-slate-500">
-            Avg easiness:{' '}
-            <span className="text-slate-300 font-medium">{perf.avg_easiness ?? '—'}</span>
-            <span className="text-slate-600"> /5.0</span>
-          </span>
-          <span className="text-xs text-slate-500">
-            Overdue:{' '}
-            <span className={perf.overdue > 0 ? 'text-rose-400 font-medium' : 'text-slate-300 font-medium'}>
-              {perf.overdue}
-            </span>
-          </span>
-          <span className="text-xs text-slate-500">
-            Due now:{' '}
-            <span className={srs.due_now > 0 ? 'text-amber-400 font-medium' : 'text-slate-300 font-medium'}>
-              {srs.due_now}
-            </span>
-          </span>
-        </div>
-      </div>
-
-      {/* ── 4. Performance ──────────────────────────────────────────────────── */}
+      {/* ── 3. Performance ──────────────────────────────────────────────────── */}
       <div>
         <SectionTitle>Performance</SectionTitle>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

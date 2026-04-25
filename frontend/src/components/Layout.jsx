@@ -12,19 +12,16 @@ import {
   Sparkles,
   GraduationCap,
   TrendingUp,
-  CalendarClock,
   BarChart2,
   Map,
   Swords,
 } from 'lucide-react'
-import { useSRSStats } from '../hooks/useSRSStats'
 
 const NAV = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/roadmap',       icon: Map,             label: 'Roadmap' },
   { to: '/progress',      icon: TrendingUp,      label: 'Progress' },
   { to: '/statistics',   icon: BarChart2,       label: 'Statistics' },
-  { to: '/srs',           icon: CalendarClock,   label: 'SRS Review', srs: true },
   { to: '/browse',        icon: Search,          label: 'Browse' },
   { to: '/study',         icon: Brain,           label: 'Flashcards' },
   { to: '/study-session', icon: GraduationCap,   label: 'Study Session' },
@@ -60,8 +57,6 @@ function NavItem({ to, icon: Icon, label, badge, onClick }) {
 
 export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { stats: srsStats } = useSRSStats()
-  const srsDue = srsStats?.due_now ?? 0
 
   const sidebar = (
     <nav className="flex flex-col h-full">
@@ -79,7 +74,7 @@ export default function Layout({ children }) {
           <NavItem
             key={n.to}
             {...n}
-            badge={n.srs ? srsDue : 0}
+            badge={undefined}
             onClick={() => setMobileOpen(false)}
           />
         ))}
