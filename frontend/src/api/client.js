@@ -21,6 +21,9 @@ export const lookupWord = (q) => api.get('/words/lookup', { params: { q } })
 export const getStudyWords = (params) => api.get('/words/study', { params })
 export const getQuiz = (params) => api.get('/words/quiz', { params })
 export const getFillQuiz = (params) => api.get('/words/fill-quiz', { params })
+export const getHardQuiz = (params) => api.get('/words/hard-quiz', { params })
+export const checkHardAnswer = (word_id, user_answer, direction) =>
+  api.post('/words/hard-quiz/check', { word_id, user_answer, direction })
 export const getStudySession = (wordIds) => api.get('/study-session', { params: { word_ids: wordIds } })
 
 // ── Word Frequency ────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import {
   CalendarClock,
   BarChart2,
   Map,
+  Swords,
 } from 'lucide-react'
 import { useSRSStats } from '../hooks/useSRSStats'
 
@@ -29,6 +30,7 @@ const NAV = [
   { to: '/study-session', icon: GraduationCap,   label: 'Study Session' },
   { to: '/quiz',          icon: Trophy,          label: 'Quiz' },
   { to: '/fill-quiz',     icon: PenLine,         label: 'Fill in Blank' },
+  { to: '/hard-quiz',    icon: Swords,          label: 'Hard Mode' },
   { to: '/books',         icon: Library,         label: 'Groups' },
 ]
 

@@ -12,6 +12,7 @@ import SRSReview from './pages/SRSReview'
 import Statistics from './pages/Statistics'
 import Roadmap from './pages/Roadmap'
 import MissionQuiz from './pages/MissionQuiz'
+import HardQuiz from './pages/HardQuiz'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/study" element={<Study />} />
         <Route path="/quiz" element={<Quiz />} />
         <Route path="/fill-quiz" element={<FillQuiz />} />
+        <Route path="/hard-quiz" element={<HardQuiz />} />
         <Route path="/books" element={<Books />} />
         <Route path="/study-session" element={<StudySession />} />
         <Route path="/progress" element={<Progress />} />

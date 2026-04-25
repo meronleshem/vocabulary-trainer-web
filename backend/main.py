@@ -13,6 +13,31 @@ import requests
 from bs4 import BeautifulSoup
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "vocabulary.db")
+
+# Hebrew niqqud (vowel marks) U+05B0–U+05C7
+_NIQQUD_RE = re.compile(r'[ְ-ׇ]')
+
+def _strip_niqqud(text: str) -> str:
+    return _NIQQUD_RE.sub('', text)
+
+def _normalize_answer(text: str) -> str:
+    return _strip_niqqud(text).strip()
+
+def _split_translations(stored: str) -> list:
+    """Split a stored translation string into individual normalized alternatives."""
+    parts = re.split(r'[,;/|]', stored)
+    seen, result = set(), []
+    for p in parts:
+        n = _normalize_answer(p)
+        if n and n not in seen:
+            seen.add(n)
+            result.append(n)
+    return result
+
+def _validate_answer(user_input: str, stored: str) -> bool:
+    if not user_input or not user_input.strip():
+        return False
+    return _normalize_answer(user_input) in _split_translations(stored)
 IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "Images")
 WORD_FREQ_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "word_frequency.json")
 
@@ -543,6 +568,75 @@ def get_quiz(
         })
 
     return questions
+
+
+@app.get("/api/words/hard-quiz")
+def get_hard_quiz(
+    difficulty: List[str] = Query(default=[]),
+    group_names: List[str] = Query(default=[]),
+    frequency_level: List[int] = Query(default=[]),
+    count: int = Query(10, ge=1, le=50),
+    direction: str = "eng_to_heb",
+):
+    conditions, params = [], []
+    if difficulty:
+        placeholders = ",".join(["?"] * len(difficulty))
+        conditions.append(f"difficulty IN ({placeholders})")
+        params.extend(difficulty)
+    if group_names:
+        placeholders = ",".join(["?"] * len(group_names))
+        conditions.append(f"group_name IN ({placeholders})")
+        params.extend(group_names)
+    freq_cond, freq_params = _freq_filter(frequency_level)
+    conditions.extend(freq_cond)
+    params.extend(freq_params)
+
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(f"SELECT * FROM vocabulary{where} ORDER BY RANDOM() LIMIT ?", params + [count])
+    words = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    questions = []
+    for word in words:
+        if direction == "eng_to_heb":
+            question_text = word["engWord"]
+            correct = word["hebWord"]
+        else:
+            question_text = word["hebWord"]
+            correct = word["engWord"]
+
+        questions.append({
+            "id": word["id"],
+            "question": question_text,
+            "correct": correct,
+            "accepted": _split_translations(correct),
+            "word": word,
+        })
+
+    return questions
+
+
+class CheckAnswerBody(BaseModel):
+    word_id: int
+    user_answer: str
+    direction: str = "eng_to_heb"
+
+
+@app.post("/api/words/hard-quiz/check")
+def check_hard_answer(body: CheckAnswerBody):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT hebWord, engWord FROM vocabulary WHERE id = ?", (body.word_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Word not found")
+
+    stored = row["hebWord"] if body.direction == "eng_to_heb" else row["engWord"]
+    correct = _validate_answer(body.user_answer, stored)
+    return {"correct": correct, "accepted": _split_translations(stored)}
 
 
 @app.get("/api/words/fill-quiz")
