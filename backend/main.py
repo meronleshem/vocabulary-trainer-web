@@ -21,7 +21,10 @@ def _strip_niqqud(text: str) -> str:
     return _NIQQUD_RE.sub('', text)
 
 def _normalize_answer(text: str) -> str:
-    return _strip_niqqud(text).strip()
+    text = re.sub(r'\([^)]*\)', '', text)   # strip (parenthetical)
+    text = re.sub(r'\[[^\]]*\]', '', text)  # strip [bracketed]
+    text = _strip_niqqud(text)
+    return text.strip()
 
 def _split_translations(stored: str) -> list:
     """Split a stored translation string into individual normalized alternatives."""

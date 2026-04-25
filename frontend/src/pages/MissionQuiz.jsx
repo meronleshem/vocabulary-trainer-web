@@ -8,7 +8,7 @@ import { getMissionQuiz, submitMissionAttempt, recordSession } from '../api/clie
 
 // ── Answer validation (mirrors backend + HardQuiz logic) ─────────────────────
 const NIQQUD = /[ְ-ׇ]/g
-function normalizeAnswer(text) { return text.replace(NIQQUD, '').trim() }
+function normalizeAnswer(text) { return text.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').replace(NIQQUD, '').trim() }
 function validateAnswer(userInput, accepted) {
   if (!userInput?.trim()) return false
   return (accepted || []).includes(normalizeAnswer(userInput))

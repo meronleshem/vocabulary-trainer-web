@@ -11,7 +11,7 @@ import DifficultyPicker from '../components/DifficultyPicker'
 const NIQQUD = /[ְ-ׇ]/g
 
 function normalizeAnswer(text) {
-  return text.replace(NIQQUD, '').trim()
+  return text.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').replace(NIQQUD, '').trim()
 }
 
 function validateAnswer(userInput, accepted) {
