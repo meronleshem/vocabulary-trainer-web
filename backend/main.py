@@ -2113,7 +2113,7 @@ def get_mission_quiz(mission_id: int, direction: str = "eng_to_heb"):
         random.shuffle(distractors)
         options = distractors[:3] + [correct]
         random.shuffle(options)
-        questions.append({"id": word["id"], "question": q_text, "correct": correct, "options": options, "word": word})
+        questions.append({"id": word["id"], "question": q_text, "correct": correct, "options": options, "accepted": _split_translations(correct), "word": word})
 
     random.shuffle(questions)
     return {"questions": questions, "mission": mission}

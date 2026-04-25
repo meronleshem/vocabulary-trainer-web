@@ -2,10 +2,19 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2,
-  Star, Zap, ChevronLeft,
+  Star, Zap, ChevronLeft, Lightbulb,
 } from 'lucide-react'
 import { getMissionQuiz, submitMissionAttempt, recordSession } from '../api/client'
 
+// ── Answer validation (mirrors backend + HardQuiz logic) ─────────────────────
+const NIQQUD = /[ְ-ׇ]/g
+function normalizeAnswer(text) { return text.replace(NIQQUD, '').trim() }
+function validateAnswer(userInput, accepted) {
+  if (!userInput?.trim()) return false
+  return (accepted || []).includes(normalizeAnswer(userInput))
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 const RESULT_COLORS = {
   correct:    'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
   wrong:      'bg-red-500/20 border-red-500/50 text-red-300',
@@ -14,9 +23,9 @@ const RESULT_COLORS = {
 }
 
 const TYPE_LABELS = {
-  group:        { title: 'Group Mission',       color: 'text-primary-light',  bg: 'bg-primary/15'    },
-  checkpoint_3: { title: 'Mini Checkpoint',     color: 'text-amber-400',      bg: 'bg-amber-500/15'  },
-  checkpoint_9: { title: 'Master Checkpoint',   color: 'text-purple-400',     bg: 'bg-purple-500/15' },
+  group:        { title: 'Group Mission',     color: 'text-primary-light',  bg: 'bg-primary/15'    },
+  checkpoint_3: { title: 'Mini Checkpoint',   color: 'text-amber-400',      bg: 'bg-amber-500/15'  },
+  checkpoint_9: { title: 'Master Checkpoint', color: 'text-purple-400',     bg: 'bg-purple-500/15' },
 }
 
 const speak = (text, lang = 'en-US') => {
@@ -31,18 +40,23 @@ export default function MissionQuiz() {
   const { missionId } = useParams()
   const navigate = useNavigate()
 
-  const [mission, setMission]     = useState(null)
-  const [questions, setQuestions] = useState([])
-  const [qIdx, setQIdx]           = useState(0)
-  const [selected, setSelected]   = useState(null)
-  const [answered, setAnswered]   = useState(false)
-  const [score, setScore]         = useState(0)
-  const [history, setHistory]     = useState([])
-  const [phase, setPhase]         = useState('loading') // loading | quiz | results | result-modal
-  const [direction, setDirection] = useState('eng_to_heb')
+  const [mission, setMission]         = useState(null)
+  const [questions, setQuestions]     = useState([])
+  const [qIdx, setQIdx]               = useState(0)
+  const [selected, setSelected]       = useState(null)
+  const [answered, setAnswered]       = useState(false)
+  const [score, setScore]             = useState(0)
+  const [history, setHistory]         = useState([])
+  const [phase, setPhase]             = useState('loading') // loading | quiz | results | result-modal
+  const [direction, setDirection]     = useState('eng_to_heb')
+  const [mode, setMode]               = useState('multiple_choice') // multiple_choice | hard
+  const [userInput, setUserInput]     = useState('')
+  const [isHardCorrect, setIsHardCorrect] = useState(false)
+  const [hintChars, setHintChars]     = useState(0)
   const [submitResult, setSubmitResult] = useState(null)
-  const [submitting, setSubmitting]     = useState(false)
+  const [submitting, setSubmitting]   = useState(false)
   const startTime = useRef(null)
+  const inputRef  = useRef(null)
 
   const load = useCallback(async () => {
     setPhase('loading')
@@ -53,6 +67,9 @@ export default function MissionQuiz() {
       setQIdx(0)
       setSelected(null)
       setAnswered(false)
+      setUserInput('')
+      setIsHardCorrect(false)
+      setHintChars(0)
       setScore(0)
       setHistory([])
       startTime.current = Date.now()
@@ -71,35 +88,104 @@ export default function MissionQuiz() {
     speak(q.question, direction === 'eng_to_heb' ? 'en-US' : 'he-IL')
   }, [qIdx, phase, questions, direction])
 
+  // Auto-focus input in hard mode
+  useEffect(() => {
+    if (phase !== 'quiz' || !questions.length || mode !== 'hard') return
+    setHintChars(0)
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }, [qIdx, phase, questions, mode])
+
+  // ── Multiple-choice handler ───────────────────────────────────────────────
   const handleSelect = (option) => {
     if (answered) return
     setSelected(option)
     setAnswered(true)
     const correct = option === questions[qIdx].correct
     if (correct) setScore((s) => s + 1)
-    setHistory((h) => [...h, { correct, word: questions[qIdx].word, chosen: option, expected: questions[qIdx].correct }])
+    setHistory((h) => [
+      ...h,
+      { correct, word: questions[qIdx].word, chosen: option, expected: questions[qIdx].correct, accepted: questions[qIdx].accepted || [] },
+    ])
   }
 
+  // ── Hard mode handler ─────────────────────────────────────────────────────
+  const handleHardSubmit = () => {
+    if (answered || !userInput.trim()) return
+    const q = questions[qIdx]
+    const correct = validateAnswer(userInput, q.accepted)
+    setIsHardCorrect(correct)
+    setAnswered(true)
+    if (correct) setScore((s) => s + 1)
+    setHistory((h) => [
+      ...h,
+      { correct, word: q.word, chosen: userInput, expected: q.correct, accepted: q.accepted || [] },
+    ])
+  }
+
+  const handleHint = () => {
+    const primary = questions[qIdx]?.accepted?.[0] || ''
+    setHintChars((n) => Math.min(n + 1, primary.length))
+  }
+
+  // ── Advance to next question ──────────────────────────────────────────────
   const goNext = async () => {
     const isLast = qIdx + 1 >= questions.length
     if (isLast) {
-      const finalCorrect = score + (selected === questions[qIdx].correct ? 1 : 0)
-      const finalScore   = finalCorrect / questions.length
-      const duration     = startTime.current ? Math.round((Date.now() - startTime.current) / 1000) : null
-
+      const lastCorrect = mode === 'hard'
+        ? isHardCorrect
+        : selected === questions[qIdx].correct
+      const finalCorrect = score + (lastCorrect ? 1 : 0)
+      const duration = startTime.current ? Math.round((Date.now() - startTime.current) / 1000) : null
       recordSession('quiz', questions.map((q) => q.word.id), {
-        correct_count:   finalCorrect,
-        incorrect_count: questions.length - finalCorrect,
+        correct_count:    finalCorrect,
+        incorrect_count:  questions.length - finalCorrect,
         duration_seconds: duration,
       }).catch(() => {})
-
       setPhase('results')
     } else {
       setQIdx((i) => i + 1)
       setSelected(null)
       setAnswered(false)
+      setUserInput('')
+      setIsHardCorrect(false)
     }
   }
+
+  // ── Mode switch (resets current unanswered question) ─────────────────────
+  const handleModeSwitch = (newMode) => {
+    if (newMode === mode) return
+    setMode(newMode)
+    if (!answered) {
+      setSelected(null)
+      setUserInput('')
+      setIsHardCorrect(false)
+      setHintChars(0)
+    }
+  }
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'quiz') return
+    const handler = (e) => {
+      if (mode === 'multiple_choice') {
+        const keyMap = { '1': 0, '2': 1, '3': 2, '4': 3 }
+        if (e.key in keyMap) {
+          const opt = questions[qIdx]?.options[keyMap[e.key]]
+          if (opt !== undefined) handleSelect(opt)
+        } else if (e.key === ' ' && answered) {
+          e.preventDefault()
+          goNext()
+        }
+      } else {
+        if (e.key === 'Enter') {
+          if (!answered) handleHardSubmit()
+          else goNext()
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [phase, qIdx, questions, answered, mode, userInput])
 
   const submitScore = async () => {
     const finalCorrect = history.filter((h) => h.correct).length
@@ -118,22 +204,6 @@ export default function MissionQuiz() {
     }
   }
 
-  useEffect(() => {
-    if (phase !== 'quiz') return
-    const handleKey = (e) => {
-      const keyMap = { '1': 0, '2': 1, '3': 2, '4': 3 }
-      if (e.key in keyMap) {
-        const opt = questions[qIdx]?.options[keyMap[e.key]]
-        if (opt !== undefined) handleSelect(opt)
-      } else if (e.key === ' ' && answered) {
-        e.preventDefault()
-        goNext()
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [phase, qIdx, questions, answered])
-
   const getOptionStyle = (option) => {
     if (!answered) return RESULT_COLORS.default
     const isCorrect  = option === questions[qIdx].correct
@@ -143,7 +213,7 @@ export default function MissionQuiz() {
     return RESULT_COLORS.unselected
   }
 
-  // ── Loading ─────────────────────────────────────────────────────────────────
+  // ── Loading ──────────────────────────────────────────────────────────────
   if (phase === 'loading') {
     return (
       <div className="flex items-center justify-center h-64">
@@ -161,13 +231,13 @@ export default function MissionQuiz() {
     )
   }
 
-  const typeMeta = TYPE_LABELS[mission?.mission_type] || TYPE_LABELS.group
+  const typeMeta    = TYPE_LABELS[mission?.mission_type] || TYPE_LABELS.group
   const requiredPct = Math.round((mission?.required_score ?? 0.9) * 100)
 
-  // ── Result modal (pass/fail) ────────────────────────────────────────────────
+  // ── Result modal (pass/fail) ─────────────────────────────────────────────
   if (phase === 'result-modal' && submitResult) {
-    const passed     = submitResult.passed
-    const scorePct   = Math.round(submitResult.score * 100)
+    const passed      = submitResult.passed
+    const scorePct    = Math.round(submitResult.score * 100)
     const nextMission = submitResult.next_mission
 
     return (
@@ -191,7 +261,7 @@ export default function MissionQuiz() {
           {passed && (
             <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold mb-4 ${typeMeta.bg} ${typeMeta.color}`}>
               <CheckCircle size={16} />
-              {mission?.mission_type === 'group' ? 'Group Completed!' :
+              {mission?.mission_type === 'group'        ? 'Group Completed!'   :
                mission?.mission_type === 'checkpoint_3' ? 'Checkpoint Cleared!' :
                'Mastery Achieved!'}
             </div>
@@ -199,12 +269,11 @@ export default function MissionQuiz() {
 
           {passed && nextMission && (
             <p className="text-xs text-slate-500 mb-6">
-              Next up: <span className="text-slate-300 font-medium">
-                {nextMission.mission_type === 'group'
-                  ? `Group ${nextMission.related_group_ids?.[0]}`
-                  : nextMission.mission_type === 'checkpoint_3'
-                  ? `Mini Checkpoint`
-                  : `Master Checkpoint`}
+              Next up:{' '}
+              <span className="text-slate-300 font-medium">
+                {nextMission.mission_type === 'group'        ? `Group ${nextMission.related_group_ids?.[0]}`
+                 : nextMission.mission_type === 'checkpoint_3' ? 'Mini Checkpoint'
+                 : 'Master Checkpoint'}
               </span>
             </p>
           )}
@@ -243,10 +312,10 @@ export default function MissionQuiz() {
     )
   }
 
-  // ── Results (before submitting) ─────────────────────────────────────────────
+  // ── Results (before submitting) ──────────────────────────────────────────
   if (phase === 'results') {
-    const correct = history.filter((h) => h.correct).length
-    const pct     = Math.round((correct / questions.length) * 100)
+    const correct  = history.filter((h) => h.correct).length
+    const pct      = Math.round((correct / questions.length) * 100)
     const willPass = pct >= requiredPct
 
     return (
@@ -269,9 +338,7 @@ export default function MissionQuiz() {
           }`}>
             {pct}%
           </p>
-          <p className="text-slate-400 text-sm">
-            {correct} / {questions.length} correct
-          </p>
+          <p className="text-slate-400 text-sm">{correct} / {questions.length} correct</p>
           <p className="text-xs text-slate-500 mt-2">
             {willPass
               ? `Ready to pass (needed ${requiredPct}%)`
@@ -285,15 +352,20 @@ export default function MissionQuiz() {
             <h3 className="text-sm font-semibold text-slate-300 mb-3">
               Review Mistakes ({history.filter((h) => !h.correct).length})
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {history.filter((h) => !h.correct).map((h, i) => (
-                <div key={i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-dark-500 text-sm">
-                  <div className="min-w-0">
+                <div key={i} className="py-2 px-3 rounded-lg bg-dark-500 text-sm">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-slate-300 font-medium">{h.word.engWord}</span>
-                    <span className="text-slate-600 mx-1.5">→</span>
-                    <span className="text-emerald-400">{h.expected}</span>
+                    <span className="text-red-400 text-xs flex-shrink-0 heb">{h.chosen}</span>
                   </div>
-                  <span className="text-red-400 text-xs ml-3 flex-shrink-0">{h.chosen}</span>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {(h.accepted.length > 0 ? h.accepted : [h.expected]).map((a) => (
+                      <span key={a} className="heb text-xs px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                        {a}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -319,9 +391,12 @@ export default function MissionQuiz() {
     )
   }
 
-  // ── Quiz ────────────────────────────────────────────────────────────────────
-  const q        = questions[qIdx]
-  const progress = ((qIdx + (answered ? 1 : 0)) / questions.length) * 100
+  // ── Quiz ─────────────────────────────────────────────────────────────────
+  const q           = questions[qIdx]
+  const progress    = ((qIdx + (answered ? 1 : 0)) / questions.length) * 100
+  const inputIsHeb  = direction === 'eng_to_heb'
+  const primaryHint = q.accepted?.[0] || ''
+  const hintText    = hintChars > 0 ? primaryHint.slice(0, hintChars) + '…' : null
 
   return (
     <div className="max-w-lg mx-auto mt-4 space-y-4 animate-fade-in">
@@ -347,8 +422,8 @@ export default function MissionQuiz() {
         </div>
       </div>
 
-      {/* Direction toggle */}
-      <div className="flex gap-2">
+      {/* Controls row: direction + mode + TTS */}
+      <div className="flex items-center gap-2 flex-wrap">
         {[
           { val: 'eng_to_heb', label: 'EN → HE' },
           { val: 'heb_to_eng', label: 'HE → EN' },
@@ -365,6 +440,26 @@ export default function MissionQuiz() {
             {d.label}
           </button>
         ))}
+
+        <div className="w-px h-4 bg-dark-400 mx-0.5" />
+
+        {[
+          { val: 'multiple_choice', label: 'Multiple Choice' },
+          { val: 'hard',            label: 'Hard Mode' },
+        ].map((m) => (
+          <button
+            key={m.val}
+            onClick={() => handleModeSwitch(m.val)}
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${
+              mode === m.val
+                ? 'bg-primary/15 border-primary/40 text-primary-light'
+                : 'bg-dark-500 border-dark-400 text-slate-500 hover:border-dark-300'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+
         <button
           onClick={() => speak(q.question, direction === 'eng_to_heb' ? 'en-US' : 'he-IL')}
           className="ml-auto text-slate-500 hover:text-slate-200 transition-colors p-1.5"
@@ -397,41 +492,110 @@ export default function MissionQuiz() {
         </p>
       </div>
 
-      {/* Options */}
-      <div className="grid grid-cols-2 gap-3">
-        {q.options.map((option, i) => (
-          <button
-            key={option}
-            onClick={() => handleSelect(option)}
-            className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all ${getOptionStyle(option)}`}
-          >
-            <span className="text-xs opacity-50 mr-1.5">{i + 1}</span>
-            <span className={direction === 'eng_to_heb' ? 'heb' : ''}>{option}</span>
-          </button>
-        ))}
-      </div>
+      {/* Answer area: multiple choice OR hard mode input */}
+      {mode === 'multiple_choice' ? (
+        <div className="grid grid-cols-2 gap-3">
+          {q.options.map((option, i) => (
+            <button
+              key={option}
+              onClick={() => handleSelect(option)}
+              className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all ${getOptionStyle(option)}`}
+            >
+              <span className="text-xs opacity-50 mr-1.5">{i + 1}</span>
+              <span className={direction === 'eng_to_heb' ? 'heb' : ''}>{option}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              disabled={answered}
+              dir={inputIsHeb ? 'rtl' : 'ltr'}
+              placeholder={inputIsHeb ? 'הקלד תרגום…' : 'Type translation…'}
+              className={`flex-1 px-4 py-3 rounded-xl border-2 bg-dark-500 text-slate-100
+                placeholder-slate-600 font-medium transition-all outline-none text-lg
+                ${inputIsHeb ? 'heb text-right' : ''}
+                ${answered
+                  ? isHardCorrect
+                    ? 'border-emerald-500/60 bg-emerald-900/10'
+                    : 'border-red-500/60 bg-red-900/10'
+                  : 'border-dark-400 focus:border-primary/60'
+                }`}
+            />
+            {!answered && (
+              <button
+                onClick={handleHint}
+                disabled={hintChars >= primaryHint.length}
+                className="px-3 py-2 rounded-xl border-2 border-dark-400 bg-dark-500 text-slate-400
+                  hover:text-amber-400 hover:border-amber-500/40 transition-all disabled:opacity-30"
+                title="Reveal a hint"
+              >
+                <Lightbulb size={18} />
+              </button>
+            )}
+          </div>
+
+          {hintText && !answered && (
+            <p className={`text-xs text-amber-400/80 px-1 ${inputIsHeb ? 'heb text-right' : ''}`}>
+              Hint: {hintText}
+            </p>
+          )}
+
+          {!answered && (
+            <button
+              className="btn-primary w-full py-2.5"
+              onClick={handleHardSubmit}
+              disabled={!userInput.trim()}
+            >
+              Submit
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Feedback row */}
       {answered && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm">
-            {selected === q.correct
-              ? <><CheckCircle size={18} className="text-emerald-400" /><span className="text-emerald-400">Correct!</span></>
-              : <><XCircle size={18} className="text-red-400" /><span className="text-red-400">Wrong</span></>}
+        <div className="space-y-2">
+          {mode === 'hard' && !isHardCorrect && (
+            <div className="px-3 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10">
+              <p className="text-xs text-slate-400 mb-1">Accepted answers:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(q.accepted?.length ? q.accepted : [q.correct]).map((a) => (
+                  <span key={a} className="heb text-sm px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">
+                    {a}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              {(mode === 'hard' ? isHardCorrect : selected === q.correct)
+                ? <><CheckCircle size={18} className="text-emerald-400" /><span className="text-emerald-400">Correct!</span></>
+                : <><XCircle    size={18} className="text-red-400"     /><span className="text-red-400">Wrong</span></>}
+            </div>
+            <button
+              onClick={goNext}
+              className="btn-primary flex items-center gap-1.5 text-sm px-4 py-2"
+            >
+              {qIdx + 1 >= questions.length ? 'Finish' : 'Next'}
+              <ArrowRight size={14} />
+            </button>
           </div>
-          <button
-            onClick={goNext}
-            className="btn-primary flex items-center gap-1.5 text-sm px-4 py-2"
-          >
-            {qIdx + 1 >= questions.length ? 'Finish' : 'Next'}
-            <ArrowRight size={14} />
-          </button>
         </div>
       )}
 
       {/* Keyboard hint */}
       <p className="text-xs text-slate-600 text-center">
-        Press 1–4 to answer · Space to continue
+        {mode === 'multiple_choice'
+          ? 'Press 1–4 to answer · Space to continue'
+          : 'Enter to submit · Enter to continue'}
       </p>
     </div>
   )
