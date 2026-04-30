@@ -1510,6 +1510,52 @@ def get_stats_performance():
     }
 
 
+@app.get("/api/stats/difficulty-timeline")
+def get_difficulty_timeline():
+    """Daily snapshot of word counts per difficulty, derived from difficulty_history."""
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM vocabulary")
+    all_ids = [r["id"] for r in cur.fetchall()]
+
+    cur.execute(
+        "SELECT date, word_id, difficulty FROM difficulty_history ORDER BY date ASC, id ASC"
+    )
+    history = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("SELECT id, difficulty FROM vocabulary")
+    vocab_diff = {r["id"]: r["difficulty"] for r in cur.fetchall()}
+    conn.close()
+
+    if not history:
+        return []
+
+    # Words that appear in history started as NEW_WORD then got rated.
+    # Words that never appear in history keep their vocabulary difficulty the whole time.
+    history_word_ids = {h["word_id"] for h in history}
+
+    current = {
+        wid: ("NEW_WORD" if wid in history_word_ids else vocab_diff.get(wid, "NEW_WORD"))
+        for wid in all_ids
+    }
+
+    result = []
+    i = 0
+    while i < len(history):
+        date_str = history[i]["date"]
+        while i < len(history) and history[i]["date"] == date_str:
+            current[history[i]["word_id"]] = history[i]["difficulty"]
+            i += 1
+        counts = {"NEW_WORD": 0, "EASY": 0, "MEDIUM": 0, "HARD": 0}
+        for diff in current.values():
+            if diff in counts:
+                counts[diff] += 1
+        result.append({"date": date_str, **counts})
+
+    return result
+
+
 @app.get("/api/stats/velocity")
 def get_stats_velocity():
     """Words learned per week for the last 12 weeks."""

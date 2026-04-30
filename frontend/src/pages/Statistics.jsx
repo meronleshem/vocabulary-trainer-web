@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
-  BookOpen, Target, Clock, Flame, Award,
-  Layers, Brain, CheckCircle2, AlertTriangle, Image,
+  BookOpen, Target, Clock, Flame,
+  Layers, CheckCircle2, AlertTriangle, Image,
 } from 'lucide-react'
 import {
   getStats, getProgress,
   getStatsPerformance, getStatsVelocity, getStatsHabits,
-  getStatsFreqDifficulty,
+  getStatsFreqDifficulty, getStatsDifficultyTimeline,
 } from '../api/client'
-import DifficultyBadge from '../components/DifficultyBadge'
 import StatsCard from '../components/StatsCard'
 
 const DIFF_COLORS  = { EASY: '#10b981', MEDIUM: '#f59e0b', HARD: '#ef4444', NEW_WORD: '#8b5cf6' }
@@ -75,28 +74,6 @@ function CoveragePill({ icon: Icon, label, value, total, color, invert = false }
   )
 }
 
-
-function WordAccTable({ title, words, color }) {
-  if (!words.length) return null
-  return (
-    <div className="card">
-      <h3 className={`text-sm font-semibold mb-3 ${color}`}>{title}</h3>
-      <div className="space-y-0">
-        {words.map((w, i) => (
-          <div key={i} className="flex items-center gap-3 py-2 border-b border-dark-400 last:border-0">
-            <span className="text-xs text-slate-600 w-4 flex-shrink-0">{i + 1}</span>
-            <span className="text-sm text-slate-200 flex-1 min-w-0 truncate">{w.engWord}</span>
-            <span className="text-sm text-slate-400 heb flex-shrink-0">{w.hebWord}</span>
-            <DifficultyBadge difficulty={w.difficulty} />
-            <span className={`text-sm font-semibold flex-shrink-0 ${color}`}>{w.accuracy}%</span>
-            <span className="text-xs text-slate-500 flex-shrink-0">{w.correct_count}/{w.attempt_count}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Statistics() {
@@ -112,14 +89,16 @@ export default function Statistics() {
       getStatsVelocity(),
       getStatsHabits(),
       getStatsFreqDifficulty(),
-    ]).then(([statsR, progressR, perfR, velocityR, habitsR, matrixR]) => {
+      getStatsDifficultyTimeline(),
+    ]).then(([statsR, progressR, perfR, velocityR, habitsR, matrixR, timelineR]) => {
       setData({
-        stats:    statsR.data,
-        progress: progressR.data,
-        perf:     perfR.data,
-        velocity: velocityR.data,
-        habits:   habitsR.data,
-        matrix:   matrixR.data,
+        stats:       statsR.data,
+        progress:    progressR.data,
+        perf:        perfR.data,
+        velocity:    velocityR.data,
+        habits:      habitsR.data,
+        matrix:      matrixR.data,
+        timeline:    timelineR.data,
       })
     }).finally(() => setLoading(false))
   }, [])
@@ -127,7 +106,7 @@ export default function Statistics() {
   if (loading) return <Spinner />
   if (!data)   return <p className="text-slate-500">Failed to load statistics.</p>
 
-  const { stats, progress, perf, velocity, habits, matrix } = data
+  const { stats, progress, perf, velocity, habits, matrix, timeline } = data
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const totalCorrect  = perf.by_session_type.reduce((s, t) => s + (t.total_correct  || 0), 0)
@@ -161,15 +140,11 @@ export default function Statistics() {
     }
   }).filter(d => d.total > 0)
 
-  // Accuracy by difficulty (only where there are attempts)
-  const diffAccData = (perf.by_difficulty || [])
-    .filter(d => d.total_attempts > 0)
-    .map(d => ({
-      name:     DIFF_LABELS[d.difficulty] || d.difficulty,
-      accuracy: Math.round((d.total_correct / d.total_attempts) * 100),
-      key:      d.difficulty,
-    }))
-    .sort((a, b) => b.accuracy - a.accuracy)
+  const fmtDate = (iso) => {
+    const [, m, d] = iso.split('-')
+    return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]} ${+d}`
+  }
+  const timelineData = timeline.map(d => ({ ...d, label: fmtDate(d.date) }))
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -311,101 +286,62 @@ export default function Statistics() {
         </div>
       </div>
 
-      {/* ── 3. Performance ──────────────────────────────────────────────────── */}
-      <div>
-        <SectionTitle>Performance</SectionTitle>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Accuracy by difficulty */}
-          <div className="card">
-            <h3 className="text-sm font-medium text-slate-400 mb-4">Accuracy by Difficulty</h3>
-            {diffAccData.length > 0 ? (
-              <div className="h-44">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={diffAccData} layout="vertical" margin={{ left: 0, right: 40 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3e" horizontal={false} />
-                    <XAxis
-                      type="number" domain={[0, 100]}
-                      tick={{ fill: '#64748b', fontSize: 11 }}
-                      tickFormatter={v => `${v}%`}
-                      axisLine={false} tickLine={false}
-                    />
-                    <YAxis
-                      type="category" dataKey="name"
-                      tick={{ fill: '#94a3b8', fontSize: 12 }}
-                      axisLine={false} tickLine={false}
-                      width={65}
-                    />
-                    <Tooltip
-                      formatter={v => [`${v}%`, 'Accuracy']}
-                      contentStyle={{ background: '#1a1d27', border: '1px solid #2a2d3e', borderRadius: 8 }}
-                      labelStyle={{ color: '#e2e8f0' }}
-                      itemStyle={{ color: '#94a3b8' }}
-                    />
-                    <Bar dataKey="accuracy" radius={[0, 4, 4, 0]}>
-                      {diffAccData.map(d => (
-                        <Cell key={d.key} fill={DIFF_COLORS[d.key] || '#6366f1'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">No quiz data yet.</p>
-            )}
-          </div>
-
-          {/* Accuracy by session type */}
-          <div className="card">
-            <h3 className="text-sm font-medium text-slate-400 mb-4">By Session Type</h3>
-            {perf.by_session_type.length > 0 ? (
-              <div className="space-y-1">
-                {perf.by_session_type.map(s => {
-                  const acc = s.total_attempts > 0
-                    ? Math.round((s.total_correct / s.total_attempts) * 100)
-                    : null
-                  return (
-                    <div
-                      key={s.session_type}
-                      className="flex items-center justify-between py-2 border-b border-dark-400 last:border-0"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ background: SESSION_COLORS[s.session_type] || '#6366f1' }}
-                        />
-                        <span className="text-sm text-slate-300">
-                          {SESSION_LABELS[s.session_type] || s.session_type}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-slate-400">
-                        <span>{s.session_count} sessions</span>
-                        {s.avg_duration > 0 && (
-                          <span>{Math.round(s.avg_duration / 60)}m avg</span>
-                        )}
-                        {acc != null && (
-                          <span className="font-semibold text-slate-200 w-10 text-right">{acc}%</span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">No sessions yet.</p>
-            )}
-          </div>
+      {/* ── 3. Difficulty Over Time ─────────────────────────────────────────── */}
+      <div className="card">
+        <div className="flex items-baseline gap-2 mb-4">
+          <h2 className="text-base font-semibold text-slate-200">Difficulty Over Time</h2>
+          <span className="text-slate-500 text-sm">word count per difficulty, each day</span>
         </div>
-
-        {/* Best / Worst words */}
-        {(perf.best_words.length > 0 || perf.worst_words.length > 0) && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-            <WordAccTable title="Top 5 Best Words" words={perf.best_words} color="text-emerald-400" />
-            <WordAccTable title="Top 5 Hardest Words" words={perf.worst_words} color="text-rose-400" />
+        {timelineData.length > 0 ? (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={timelineData} margin={{ left: -10, right: 10, top: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3e" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: '#64748b', fontSize: 11 }}
+                  axisLine={false} tickLine={false}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fill: '#64748b', fontSize: 11 }}
+                  axisLine={false} tickLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#1a1d27', border: '1px solid #2a2d3e', borderRadius: 8 }}
+                  labelStyle={{ color: '#e2e8f0' }}
+                  itemStyle={{ color: '#94a3b8' }}
+                />
+                {['NEW_WORD', 'EASY', 'MEDIUM', 'HARD'].map(key => (
+                  <Line
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    name={DIFF_LABELS[key]}
+                    stroke={DIFF_COLORS[key]}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
           </div>
+        ) : (
+          <p className="text-sm text-slate-500">No difficulty history yet. Rate some words to see progress.</p>
         )}
+        <div className="flex flex-wrap gap-4 mt-3 justify-center">
+          {['NEW_WORD', 'EASY', 'MEDIUM', 'HARD'].map(key => (
+            <div key={key} className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: DIFF_COLORS[key] }} />
+              <span className="text-xs text-slate-400">{DIFF_LABELS[key]}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* ── 5. Learning Velocity ────────────────────────────────────────────── */}
+      {/* ── 4. Learning Velocity ────────────────────────────────────────────── */}
       <div className="card">
         <div className="flex items-baseline gap-2 mb-4">
           <h2 className="text-base font-semibold text-slate-200">Learning Velocity</h2>
@@ -451,7 +387,7 @@ export default function Statistics() {
         </div>
       </div>
 
-      {/* ── 6. Study Habits ─────────────────────────────────────────────────── */}
+      {/* ── 5. Study Habits ─────────────────────────────────────────────────── */}
       <div>
         <SectionTitle>Study Habits</SectionTitle>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -532,7 +468,7 @@ export default function Statistics() {
         </div>
       </div>
 
-      {/* ── 7. Frequency × Difficulty Matrix ────────────────────────────────── */}
+      {/* ── 6. Frequency × Difficulty Matrix ────────────────────────────────── */}
       <div className="card overflow-x-auto">
         <div className="flex items-baseline gap-2 mb-4">
           <h2 className="text-base font-semibold text-slate-200">Frequency × Difficulty</h2>
