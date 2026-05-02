@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2 } from 'lucide-react'
-import { getQuiz, getBooks, patchDifficulty, recordSession } from '../api/client'
+import { getQuiz, getBooks, patchDifficulty, recordSession, recordAnswer } from '../api/client'
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
 import DifficultyPicker from '../components/DifficultyPicker'
@@ -96,6 +96,16 @@ export default function Quiz() {
     const correct = option === questions[qIdx].correct
     if (correct) setScore((s) => s + 1)
     setHistory((h) => [...h, { correct, word: questions[qIdx].word, chosen: option }])
+  }
+
+  const handleDontKnow = () => {
+    if (answered) return
+    const word = questions[qIdx].word
+    setSelected(null)
+    setAnswered(true)
+    setHistory((h) => [...h, { correct: false, word, chosen: "Don't know" }])
+    const forceWeak = Boolean(word.difficulty && word.difficulty !== 'NEW_WORD')
+    recordAnswer(word.id, false, forceWeak).catch(() => {})
   }
 
   const handleDifficultyChange = async (diff) => {
@@ -357,6 +367,16 @@ export default function Quiz() {
           </button>
         ))}
       </div>
+
+      {/* Don't know */}
+      {!answered && (
+        <button
+          onClick={handleDontKnow}
+          className="w-full py-2 rounded-xl border border-dark-400 bg-dark-500/50 text-slate-500 hover:text-slate-300 hover:border-slate-500 transition-all text-sm"
+        >
+          Don't know
+        </button>
+      )}
 
       {/* Feedback + Difficulty + Next */}
       {answered && (

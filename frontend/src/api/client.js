@@ -37,7 +37,8 @@ export const renameGroup = (oldName, newName) => api.put(`/groups/${encodeURICom
 
 // ── Progress & Rewards ────────────────────────────────────────────────────────
 export const getProgress = () => api.get('/progress')
-export const recordAnswer = (word_id, correct) => api.post('/progress/record-answer', { word_id, correct })
+export const recordAnswer = (word_id, correct, force_weak = false) =>
+  api.post('/progress/record-answer', { word_id, correct, force_weak })
 export const recordSession = (session_type, word_ids = [], extras = {}) =>
   api.post('/progress/record-session', { session_type, word_ids, ...extras })
 export const patchDailyGoal = (daily_goal) => api.patch('/progress/daily-goal', { daily_goal })

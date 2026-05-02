@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2, Lightbulb,
 } from 'lucide-react'
-import { getHardQuiz, getBooks, patchDifficulty, recordSession } from '../api/client'
+import { getHardQuiz, getBooks, patchDifficulty, recordSession, recordAnswer } from '../api/client'
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
 import DifficultyPicker from '../components/DifficultyPicker'
@@ -127,6 +127,19 @@ export default function HardQuiz() {
       ...h,
       { correct, word: q.word, chosen: userInput, accepted: q.accepted, correct_raw: q.correct },
     ])
+  }
+
+  const handleDontKnow = () => {
+    if (answered) return
+    const q = questions[qIdx]
+    setIsCorrect(false)
+    setAnswered(true)
+    setHistory((h) => [
+      ...h,
+      { correct: false, word: q.word, chosen: "Don't know", accepted: q.accepted, correct_raw: q.correct },
+    ])
+    const forceWeak = Boolean(q.word.difficulty && q.word.difficulty !== 'NEW_WORD')
+    recordAnswer(q.word.id, false, forceWeak).catch(() => {})
   }
 
   const goNext = () => {
@@ -398,15 +411,23 @@ export default function HardQuiz() {
           </p>
         )}
 
-        {/* Submit button */}
+        {/* Submit + Don't know */}
         {!answered && (
-          <button
-            className="btn-primary w-full py-3 text-base"
-            onClick={handleSubmit}
-            disabled={!userInput.trim()}
-          >
-            Submit
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="btn-primary flex-1 py-3 text-base"
+              onClick={handleSubmit}
+              disabled={!userInput.trim()}
+            >
+              Submit
+            </button>
+            <button
+              className="py-3 px-4 rounded-xl border border-dark-400 bg-dark-500/50 text-slate-500 hover:text-slate-300 hover:border-slate-500 transition-all text-sm"
+              onClick={handleDontKnow}
+            >
+              Don't know
+            </button>
+          </div>
         )}
       </div>
 

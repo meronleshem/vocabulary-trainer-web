@@ -159,6 +159,7 @@ def init_progress_db():
         "ALTER TABLE word_progress ADD COLUMN last_attempt_date TEXT DEFAULT NULL",
         "ALTER TABLE daily_activity ADD COLUMN correct_answers INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE daily_activity ADD COLUMN total_answers INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE word_progress ADD COLUMN force_weak INTEGER NOT NULL DEFAULT 0",
     ]
     for sql in migrations:
         try:
@@ -317,6 +318,7 @@ class DifficultyUpdate(BaseModel):
 class RecordAnswerBody(BaseModel):
     word_id: int
     correct: bool
+    force_weak: bool = False
 
 
 class RecordSessionBody(BaseModel):
@@ -1019,13 +1021,19 @@ def record_answer(body: RecordAnswerBody):
             last_attempt_date = excluded.last_attempt_date
     """, (body.word_id, today_str))
 
+    if body.force_weak:
+        cur.execute(
+            "UPDATE word_progress SET force_weak = 1 WHERE word_id = ?",
+            (body.word_id,),
+        )
+
     if body.correct:
         xp_earned += XP_CORRECT_ANSWER
 
         # Increment correct_count only while not yet learned
         cur.execute("""
             UPDATE word_progress
-            SET correct_count = correct_count + 1
+            SET correct_count = correct_count + 1, force_weak = 0
             WHERE word_id = ? AND learned = 0
         """, (body.word_id,))
 
@@ -1351,13 +1359,19 @@ def get_weak_words():
             v.id, v.engWord, v.hebWord, v.difficulty, v.group_name,
             wp.correct_count,
             wp.attempt_count,
-            ROUND(CAST(wp.correct_count AS FLOAT) / wp.attempt_count * 100) AS accuracy_pct,
+            CASE WHEN wp.attempt_count > 0
+                THEN ROUND(CAST(wp.correct_count AS FLOAT) / wp.attempt_count * 100)
+                ELSE 0
+            END AS accuracy_pct,
             wp.last_attempt_date
         FROM word_progress wp
         JOIN vocabulary v ON v.id = wp.word_id
-        WHERE wp.attempt_count >= 3
-          AND CAST(wp.correct_count AS FLOAT) / wp.attempt_count < 0.6
-        ORDER BY CAST(wp.correct_count AS FLOAT) / wp.attempt_count ASC
+        WHERE wp.force_weak = 1
+           OR (wp.attempt_count >= 3 AND CAST(wp.correct_count AS FLOAT) / wp.attempt_count < 0.6)
+        ORDER BY CASE WHEN wp.attempt_count > 0
+            THEN CAST(wp.correct_count AS FLOAT) / wp.attempt_count
+            ELSE 0
+        END ASC
         LIMIT 30
     """)
     rows = [dict(r) for r in cur.fetchall()]

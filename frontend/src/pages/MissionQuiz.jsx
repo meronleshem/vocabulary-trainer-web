@@ -4,7 +4,7 @@ import {
   CheckCircle, XCircle, Trophy, RefreshCw, ArrowRight, Volume2,
   Star, Zap, ChevronLeft, Lightbulb,
 } from 'lucide-react'
-import { getMissionQuiz, submitMissionAttempt, recordSession } from '../api/client'
+import { getMissionQuiz, submitMissionAttempt, recordSession, recordAnswer } from '../api/client'
 
 // ── Answer validation (mirrors backend + HardQuiz logic) ─────────────────────
 const NIQQUD = /[ְ-ׇ]/g
@@ -120,6 +120,20 @@ export default function MissionQuiz() {
       ...h,
       { correct, word: q.word, chosen: userInput, expected: q.correct, accepted: q.accepted || [] },
     ])
+  }
+
+  const handleDontKnow = () => {
+    if (answered) return
+    const q = questions[qIdx]
+    setSelected(null)
+    setIsHardCorrect(false)
+    setAnswered(true)
+    setHistory((h) => [
+      ...h,
+      { correct: false, word: q.word, chosen: "Don't know", expected: q.correct, accepted: q.accepted || [] },
+    ])
+    const forceWeak = Boolean(q.word?.difficulty && q.word.difficulty !== 'NEW_WORD')
+    recordAnswer(q.word.id, false, forceWeak).catch(() => {})
   }
 
   const handleHint = () => {
@@ -494,17 +508,27 @@ export default function MissionQuiz() {
 
       {/* Answer area: multiple choice OR hard mode input */}
       {mode === 'multiple_choice' ? (
-        <div className="grid grid-cols-2 gap-3">
-          {q.options.map((option, i) => (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            {q.options.map((option, i) => (
+              <button
+                key={option}
+                onClick={() => handleSelect(option)}
+                className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all ${getOptionStyle(option)}`}
+              >
+                <span className="text-xs opacity-50 mr-1.5">{i + 1}</span>
+                <span className={direction === 'eng_to_heb' ? 'heb' : ''}>{option}</span>
+              </button>
+            ))}
+          </div>
+          {!answered && (
             <button
-              key={option}
-              onClick={() => handleSelect(option)}
-              className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all ${getOptionStyle(option)}`}
+              onClick={handleDontKnow}
+              className="w-full py-2 rounded-xl border border-dark-400 bg-dark-500/50 text-slate-500 hover:text-slate-300 hover:border-slate-500 transition-all text-sm"
             >
-              <span className="text-xs opacity-50 mr-1.5">{i + 1}</span>
-              <span className={direction === 'eng_to_heb' ? 'heb' : ''}>{option}</span>
+              Don't know
             </button>
-          ))}
+          )}
         </div>
       ) : (
         <div className="space-y-2">
@@ -547,13 +571,21 @@ export default function MissionQuiz() {
           )}
 
           {!answered && (
-            <button
-              className="btn-primary w-full py-2.5"
-              onClick={handleHardSubmit}
-              disabled={!userInput.trim()}
-            >
-              Submit
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="btn-primary flex-1 py-2.5"
+                onClick={handleHardSubmit}
+                disabled={!userInput.trim()}
+              >
+                Submit
+              </button>
+              <button
+                className="py-2.5 px-4 rounded-xl border border-dark-400 bg-dark-500/50 text-slate-500 hover:text-slate-300 hover:border-slate-500 transition-all text-sm"
+                onClick={handleDontKnow}
+              >
+                Don't know
+              </button>
+            </div>
           )}
         </div>
       )}
