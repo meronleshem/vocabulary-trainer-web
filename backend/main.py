@@ -2,7 +2,7 @@ import os
 import re
 import math
 import random
-import json as _json
+import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
@@ -12,65 +12,7 @@ from pydantic import BaseModel
 import requests
 from bs4 import BeautifulSoup
 
-# ── Database backend ──────────────────────────────────────────────────────────
-# Set DATABASE_URL env var for PostgreSQL (e.g. Neon); otherwise SQLite is used.
-DATABASE_URL = os.environ.get("DATABASE_URL")
-IS_POSTGRES = bool(DATABASE_URL)
-
-if IS_POSTGRES:
-    import psycopg2
-    import psycopg2.extras
-
-    class _PgCursor:
-        """Wraps a psycopg2 RealDictCursor to behave like a sqlite3 cursor."""
-        def __init__(self, raw):
-            self._c = raw
-
-        def execute(self, sql, params=None):
-            sql = sql.replace("?", "%s")
-            self._c.execute(sql, params) if params is not None else self._c.execute(sql)
-            return self  # support chaining like sqlite3 cursors
-
-        def fetchone(self):  return self._c.fetchone()
-        def fetchall(self):  return self._c.fetchall()
-
-        @property
-        def rowcount(self): return self._c.rowcount
-        @property
-        def lastrowid(self): return None  # use RETURNING id instead
-
-    class _PgConn:
-        """Wraps a psycopg2 connection to expose conn.execute() like sqlite3."""
-        def __init__(self, raw):
-            self._conn = raw
-
-        def cursor(self):
-            return _PgCursor(self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
-
-        def execute(self, sql, params=None):
-            c = self.cursor()
-            c.execute(sql, params)
-            return c
-
-        def commit(self):    self._conn.commit()
-        def rollback(self):  self._conn.rollback()
-        def close(self):     self._conn.close()
-
-    def get_db() -> _PgConn:
-        return _PgConn(psycopg2.connect(DATABASE_URL))
-
-    _AI_PK = "SERIAL PRIMARY KEY"
-
-else:
-    import sqlite3
-    DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "vocabulary.db")
-
-    def get_db():
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    _AI_PK = "INTEGER PRIMARY KEY AUTOINCREMENT"
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "vocabulary.db")
 
 # Hebrew niqqud (vowel marks) U+05B0–U+05C7
 _NIQQUD_RE = re.compile(r'[ְ-ׇ]')
@@ -99,7 +41,6 @@ def _validate_answer(user_input: str, stored: str) -> bool:
     if not user_input or not user_input.strip():
         return False
     return _normalize_answer(user_input) in _split_translations(stored)
-
 IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "Images")
 WORD_FREQ_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "word_frequency.json")
 
@@ -107,6 +48,7 @@ WORD_FREQ_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "word
 # Word-frequency data — loaded once at startup.
 # Format: { "word": { "rank": int, "frequency_level": int, "frequency_label": str } }
 # ---------------------------------------------------------------------------
+import json as _json
 
 def _load_word_frequency() -> dict:
     try:
@@ -151,51 +93,56 @@ ACHIEVEMENTS = [
 def init_progress_db():
     conn = get_db()
     cur = conn.cursor()
-
-    stmts = [
-        """CREATE TABLE IF NOT EXISTS user_progress (
+    cur.executescript("""
+        CREATE TABLE IF NOT EXISTS user_progress (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             total_xp INTEGER NOT NULL DEFAULT 0,
             daily_goal INTEGER NOT NULL DEFAULT 10,
             current_streak INTEGER NOT NULL DEFAULT 0,
             longest_streak INTEGER NOT NULL DEFAULT 0,
             last_activity_date TEXT DEFAULT NULL
-        )""",
-        "INSERT INTO user_progress (id) VALUES (1) ON CONFLICT DO NOTHING",
-        """CREATE TABLE IF NOT EXISTS word_progress (
+        );
+        INSERT OR IGNORE INTO user_progress (id) VALUES (1);
+
+        CREATE TABLE IF NOT EXISTS word_progress (
             word_id INTEGER PRIMARY KEY,
             correct_count INTEGER NOT NULL DEFAULT 0,
             attempt_count INTEGER NOT NULL DEFAULT 0,
             learned INTEGER NOT NULL DEFAULT 0,
             learned_at TEXT DEFAULT NULL,
             last_attempt_date TEXT DEFAULT NULL
-        )""",
-        """CREATE TABLE IF NOT EXISTS daily_activity (
+        );
+
+        CREATE TABLE IF NOT EXISTS daily_activity (
             date TEXT PRIMARY KEY,
             words_studied INTEGER NOT NULL DEFAULT 0,
             sessions_completed INTEGER NOT NULL DEFAULT 0,
             xp_earned INTEGER NOT NULL DEFAULT 0,
             correct_answers INTEGER NOT NULL DEFAULT 0,
             total_answers INTEGER NOT NULL DEFAULT 0
-        )""",
-        """CREATE TABLE IF NOT EXISTS achievements (
+        );
+
+        CREATE TABLE IF NOT EXISTS achievements (
             id TEXT PRIMARY KEY,
             unlocked_at TEXT NOT NULL,
             xp_awarded INTEGER NOT NULL DEFAULT 0
-        )""",
-        """CREATE TABLE IF NOT EXISTS daily_words (
+        );
+
+        CREATE TABLE IF NOT EXISTS daily_words (
             date TEXT NOT NULL,
             word_id INTEGER NOT NULL,
             PRIMARY KEY (date, word_id)
-        )""",
-        f"""CREATE TABLE IF NOT EXISTS difficulty_history (
-            id {_AI_PK},
+        );
+
+        CREATE TABLE IF NOT EXISTS difficulty_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
             word_id INTEGER NOT NULL,
             difficulty TEXT NOT NULL
-        )""",
-        f"""CREATE TABLE IF NOT EXISTS sessions (
-            id {_AI_PK},
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_type TEXT NOT NULL,
             started_at TEXT NOT NULL,
             ended_at TEXT,
@@ -203,55 +150,46 @@ def init_progress_db():
             correct_count INTEGER NOT NULL DEFAULT 0,
             incorrect_count INTEGER NOT NULL DEFAULT 0,
             duration_seconds INTEGER DEFAULT NULL
-        )""",
-    ]
-    for stmt in stmts:
-        cur.execute(stmt)
-
+        );
+    """)
     # Migrate existing databases — add columns that may not exist yet.
+    # SQLite does not support ADD COLUMN IF NOT EXISTS, so we try each and ignore errors.
     migrations = [
-        ("word_progress",  "attempt_count",      "INTEGER NOT NULL DEFAULT 0"),
-        ("word_progress",  "last_attempt_date",   "TEXT DEFAULT NULL"),
-        ("daily_activity", "correct_answers",     "INTEGER NOT NULL DEFAULT 0"),
-        ("daily_activity", "total_answers",       "INTEGER NOT NULL DEFAULT 0"),
+        "ALTER TABLE word_progress ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE word_progress ADD COLUMN last_attempt_date TEXT DEFAULT NULL",
+        "ALTER TABLE daily_activity ADD COLUMN correct_answers INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_activity ADD COLUMN total_answers INTEGER NOT NULL DEFAULT 0",
     ]
-    for table, col, col_def in migrations:
-        if IS_POSTGRES:
-            cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {col_def}")
-        else:
-            try:
-                cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
-            except Exception:
-                pass  # Column already exists
-
+    for sql in migrations:
+        try:
+            cur.execute(sql)
+        except Exception:
+            pass  # Column already exists
     conn.commit()
     conn.close()
 
 
 app = FastAPI(title="VocabularyApp API", version="1.0.0")
 
-if os.path.isdir(IMAGES_DIR):
-    app.mount("/api/images", StaticFiles(directory=IMAGES_DIR), name="images")
-
-# ALLOWED_ORIGINS env var: comma-separated list of allowed origins.
-# Set to your Vercel URL in production, e.g.:
-#   ALLOWED_ORIGINS=https://vocabulary-trainer-web.vercel.app
-_raw_origins = os.environ.get(
-    "ALLOWED_ORIGINS",
-    "http://localhost:5174,http://127.0.0.1:5174"
-)
-_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+app.mount("/api/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins,
+    allow_origins=["http://localhost:5174", "http://127.0.0.1:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 # Initialise progress tables on startup (idempotent).
+# Deferred to after get_db() is defined.
 init_progress_db()
 
 
@@ -265,9 +203,10 @@ def _freq_filter(frequency_level: list[int]) -> tuple[list, list]:
         return [], []
     selected = set(frequency_level)
     conn_tmp = get_db()
-    cur_tmp = conn_tmp.cursor()
-    cur_tmp.execute("SELECT LOWER(engWord) as eng FROM vocabulary")
-    vocab_words = [r["eng"] for r in cur_tmp.fetchall()]
+    vocab_words = [
+        r["eng"]
+        for r in conn_tmp.execute("SELECT LOWER(engWord) as eng FROM vocabulary").fetchall()
+    ]
     conn_tmp.close()
     matching = [
         w for w in vocab_words
@@ -294,13 +233,19 @@ def _scrape_morfix(eng_word: str) -> dict:
 
     soup = BeautifulSoup(resp.text, "html.parser")
 
+    # Each part-of-speech block lives in a Translation_content_enTohe div.
+    # Inside it: Translation_divTop_enTohe (contains the POS label)
+    #            translation_bottom_container > Translation_divMiddle_enTohe > normal_translation_div
     heb_parts = []
     content_blocks = soup.find_all("div", class_="Translation_content_enTohe")
     for block in content_blocks:
+        # Extract POS label (e.g. "verb", "noun")
         top = block.find("div", class_="Translation_divTop_enTohe")
         pos = ""
         if top:
+            # The POS text is mixed with other text; grab only the first word after the eng word
             top_text = top.get_text(separator=" ", strip=True)
+            # Format: "wane verb Save Add to…" — take the token right after the eng word
             tokens = top_text.split()
             for tok in tokens:
                 if tok.lower() in ("verb", "noun", "adjective", "adverb", "preposition", "pronoun", "conjunction"):
@@ -315,6 +260,7 @@ def _scrape_morfix(eng_word: str) -> dict:
 
     heb_word = " | ".join(heb_parts)
 
+    # Examples — take from the first block that has them
     examples = ""
     for ul in soup.find_all("ul", class_="Translation_ulFooter_enTohe"):
         items = ul.find_all("li")[:3]
@@ -393,6 +339,10 @@ def get_word_frequency(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
+    """
+    Return words from the frequency dictionary, optionally filtered by
+    one or more frequency levels (1–5).  Sorted by rank ascending.
+    """
     if not WORD_FREQ:
         raise HTTPException(503, "Word frequency data not available")
 
@@ -401,6 +351,7 @@ def get_word_frequency(
         if lvl not in valid_levels:
             raise HTTPException(400, f"Invalid frequency_level: {lvl}. Must be 1–5.")
 
+    # Build the filtered list, sorted by rank
     results = [
         {"word": w, **meta}
         for w, meta in WORD_FREQ.items()
@@ -447,12 +398,15 @@ def list_words(
         conditions.append("group_name = ?")
         params.append(group_name)
 
+    # Frequency filter — classify each vocabulary word and keep only matches.
+    # Words absent from the frequency file are Rare (level 5).
     if frequency_level:
         selected = set(frequency_level)
         conn_tmp = get_db()
-        cur_tmp = conn_tmp.cursor()
-        cur_tmp.execute("SELECT LOWER(engWord) as eng FROM vocabulary")
-        vocab_words = [r["eng"] for r in cur_tmp.fetchall()]
+        vocab_words = [
+            r["eng"]
+            for r in conn_tmp.execute("SELECT LOWER(engWord) as eng FROM vocabulary").fetchall()
+        ]
         conn_tmp.close()
 
         matching = [
@@ -471,8 +425,8 @@ def list_words(
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(*) AS cnt FROM vocabulary{where}", params)
-    total = cur.fetchone()["cnt"]
+    cur.execute(f"SELECT COUNT(*) FROM vocabulary{where}", params)
+    total = cur.fetchone()[0]
 
     db_offset = (page - 1) * limit
     cur.execute(
@@ -540,6 +494,7 @@ def get_quiz(
     cur.execute(f"SELECT * FROM vocabulary{where} ORDER BY RANDOM() LIMIT ?", params + [count])
     questions_raw = [dict(r) for r in cur.fetchall()]
 
+    # Fetch pool for distractors
     cur.execute("SELECT hebWord, engWord FROM vocabulary ORDER BY RANDOM() LIMIT 200")
     pool = [dict(r) for r in cur.fetchall()]
     conn.close()
@@ -673,6 +628,7 @@ def get_fill_quiz(
     cur.execute(f"SELECT * FROM vocabulary{where} ORDER BY RANDOM() LIMIT ?", params + [count])
     words_raw = [dict(r) for r in cur.fetchall()]
 
+    # Distractor pool: random english words
     cur.execute("SELECT engWord FROM vocabulary ORDER BY RANDOM() LIMIT 200")
     pool = [r["engWord"] for r in cur.fetchall()]
     conn.close()
@@ -680,16 +636,18 @@ def get_fill_quiz(
     questions = []
     for word in words_raw:
         eng = word["engWord"]
+        # Pick a random example line that actually contains the word
         lines = [l.strip() for l in word["examples"].split("\n") if l.strip()]
         matching = [l for l in lines if re.search(re.escape(eng), l, re.IGNORECASE)]
         if not matching:
             continue
         example_line = random.choice(matching)
 
+        # Replace the word with ____
         sentence = re.sub(re.escape(eng), "____", example_line, flags=re.IGNORECASE)
 
         distractors = [w for w in pool if w.lower() != eng.lower()]
-        distractors = list(dict.fromkeys(distractors))
+        distractors = list(dict.fromkeys(distractors))  # deduplicate, preserve order
         random.shuffle(distractors)
         options = distractors[:3] + [eng]
         random.shuffle(options)
@@ -738,18 +696,12 @@ def create_word(word: WordCreate):
         conn.close()
         raise HTTPException(409, f'"{eng_lower}" already exists in the database.')
 
-    insert_sql = "INSERT INTO vocabulary (engWord, hebWord, examples, difficulty, group_name, image_url) VALUES (?,?,?,?,?,?)"
-    insert_params = (eng_lower, word.hebWord, word.examples or "", word.difficulty, word.group_name or "", word.image_url or "")
-
-    if IS_POSTGRES:
-        cur.execute(insert_sql + " RETURNING id", insert_params)
-        new_id = cur.fetchone()["id"]
-    else:
-        cur.execute(insert_sql, insert_params)
-        new_id = cur._c.lastrowid  # sqlite3 cursor
-
+    cur.execute(
+        "INSERT INTO vocabulary (engWord, hebWord, examples, difficulty, group_name, image_url) VALUES (?,?,?,?,?,?)",
+        (eng_lower, word.hebWord, word.examples or "", word.difficulty, word.group_name or "", word.image_url or ""),
+    )
     conn.commit()
-    cur.execute("SELECT * FROM vocabulary WHERE id = ?", (new_id,))
+    cur.execute("SELECT * FROM vocabulary WHERE id = ?", (cur.lastrowid,))
     row = dict(cur.fetchone())
     conn.close()
     return row
@@ -806,10 +758,12 @@ def patch_difficulty(word_id: int, body: DifficultyUpdate):
         conn.close()
         raise HTTPException(404, "Word not found")
     today_str = date.today().isoformat()
+    # Log every difficulty change to history
     cur.execute(
         "INSERT INTO difficulty_history (date, word_id, difficulty) VALUES (?, ?, ?)",
         (today_str, word_id, body.difficulty),
     )
+    # Mark word as learned when explicitly rated (not NEW_WORD)
     if body.difficulty in {"EASY", "MEDIUM", "HARD"}:
         cur.execute("""
             INSERT INTO word_progress (word_id, correct_count, learned, learned_at)
@@ -843,6 +797,7 @@ def get_study_session(word_ids: List[int] = Query(...)):
         conn.close()
         raise HTTPException(404, "No words found")
 
+    # Distractor pool — exclude the selected words
     cur.execute(
         f"SELECT id, engWord, hebWord, image_url FROM vocabulary "
         f"WHERE id NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT 200",
@@ -853,7 +808,7 @@ def get_study_session(word_ids: List[int] = Query(...)):
 
     result = []
     for word in words:
-        shuffled = random.sample(pool, len(pool))
+        shuffled = random.sample(pool, len(pool))  # fresh shuffle per word
 
         heb_seen: set = set()
         heb_distractors = []
@@ -903,6 +858,7 @@ def list_books():
     rows = cur.fetchall()
     conn.close()
 
+    # group_counts[group_name] = {total, EASY, MEDIUM, HARD, NEW_WORD}
     group_counts: dict = {}
     for row in rows:
         gname = row["group_name"]
@@ -929,6 +885,7 @@ def list_books():
             "new_word": counts["NEW_WORD"],
         })
 
+    # Sort groups within each book by natural number order
     for b in books.values():
         b["groups"].sort(key=lambda g: natural_sort_key(g["group_name"]))
 
@@ -942,8 +899,9 @@ def rename_group(group_name: str, body: dict):
         raise HTTPException(status_code=422, detail="new_name is required")
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) AS cnt FROM vocabulary WHERE group_name = ?", (new_name,))
-    if cur.fetchone()["cnt"] > 0:
+    # Check the new name doesn't already exist
+    cur.execute("SELECT COUNT(*) FROM vocabulary WHERE group_name = ?", (new_name,))
+    if cur.fetchone()[0] > 0:
         conn.close()
         raise HTTPException(status_code=409, detail=f'Group "{new_name}" already exists')
     cur.execute("UPDATE vocabulary SET group_name = ? WHERE group_name = ?", (new_name, group_name))
@@ -958,11 +916,11 @@ def get_stats():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) AS cnt FROM vocabulary")
-    total = cur.fetchone()["cnt"]
+    cur.execute("SELECT COUNT(*) FROM vocabulary")
+    total = cur.fetchone()[0]
 
-    cur.execute("SELECT difficulty, COUNT(*) AS cnt FROM vocabulary GROUP BY difficulty")
-    by_difficulty = {r["difficulty"]: r["cnt"] for r in cur.fetchall()}
+    cur.execute("SELECT difficulty, COUNT(*) FROM vocabulary GROUP BY difficulty")
+    by_difficulty = {r[0]: r[1] for r in cur.fetchall()}
 
     cur.execute(
         "SELECT group_name, difficulty, COUNT(*) AS cnt FROM vocabulary GROUP BY group_name, difficulty"
@@ -982,10 +940,12 @@ def get_stats():
     cur.execute("SELECT * FROM vocabulary ORDER BY id DESC LIMIT 6")
     recent = [dict(r) for r in cur.fetchall()]
 
+    # Frequency breakdown — cross-reference engWords with word_frequency data
     cur.execute("SELECT LOWER(engWord) as eng FROM vocabulary")
     by_frequency: dict = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     for row in cur.fetchall():
         meta = WORD_FREQ.get(row["eng"])
+        # Words not in the frequency list are rank 20001+, which is Rare (level 5)
         lvl = meta["frequency_level"] if meta else 5
         by_frequency[lvl] = by_frequency.get(lvl, 0) + 1
 
@@ -1003,6 +963,8 @@ def get_stats():
 
 def _check_achievements(cur, today_str: str, learned_count: int,
                         sessions_count: int, streak: int) -> list:
+    """Check all achievement conditions and unlock any that are newly met.
+    Returns list of newly unlocked achievement dicts."""
     cur.execute("SELECT id FROM achievements")
     already = {r["id"] for r in cur.fetchall()}
     new_unlocked = []
@@ -1038,6 +1000,7 @@ def _check_achievements(cur, today_str: str, learned_count: int,
 
 @app.post("/api/progress/record-answer")
 def record_answer(body: RecordAnswerBody):
+    """Record one quiz answer. Awards XP, updates streak, checks achievements."""
     today_str = date.today().isoformat()
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
 
@@ -1047,6 +1010,7 @@ def record_answer(body: RecordAnswerBody):
     xp_earned = 0
     newly_learned = False
 
+    # Always track the attempt (correct or wrong)
     cur.execute("""
         INSERT INTO word_progress (word_id, correct_count, attempt_count, learned, last_attempt_date)
         VALUES (?, 0, 1, 0, ?)
@@ -1058,12 +1022,14 @@ def record_answer(body: RecordAnswerBody):
     if body.correct:
         xp_earned += XP_CORRECT_ANSWER
 
+        # Increment correct_count only while not yet learned
         cur.execute("""
             UPDATE word_progress
             SET correct_count = correct_count + 1
             WHERE word_id = ? AND learned = 0
         """, (body.word_id,))
 
+        # Check if newly learned
         cur.execute(
             "SELECT correct_count, learned FROM word_progress WHERE word_id = ?",
             (body.word_id,),
@@ -1077,6 +1043,7 @@ def record_answer(body: RecordAnswerBody):
             )
             xp_earned += XP_NEW_WORD_LEARNED
 
+    # Update daily XP + accuracy counters
     correct_int = 1 if body.correct else 0
     cur.execute("""
         INSERT INTO daily_activity (date, xp_earned, correct_answers, total_answers)
@@ -1087,8 +1054,10 @@ def record_answer(body: RecordAnswerBody):
             total_answers = total_answers + 1
     """, (today_str, xp_earned, correct_int))
 
+    # Always add XP
     cur.execute("UPDATE user_progress SET total_xp = total_xp + ? WHERE id = 1", (xp_earned,))
 
+    # Update streak on first activity of a new day
     cur.execute(
         "SELECT current_streak, longest_streak, last_activity_date FROM user_progress WHERE id = 1"
     )
@@ -1111,6 +1080,7 @@ def record_answer(body: RecordAnswerBody):
             WHERE id = 1
         """, (current_streak, longest_streak, today_str))
 
+    # Check achievements
     cur.execute("SELECT COUNT(*) as cnt FROM word_progress WHERE learned = 1")
     learned_count = cur.fetchone()["cnt"]
     cur.execute("SELECT COALESCE(SUM(sessions_completed), 0) as cnt FROM daily_activity")
@@ -1131,6 +1101,7 @@ def record_answer(body: RecordAnswerBody):
 
 @app.post("/api/progress/record-session")
 def record_session(body: RecordSessionBody):
+    """Record a completed study session. Awards XP and tracks unique words toward daily goal."""
     today_str = date.today().isoformat()
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -1139,6 +1110,7 @@ def record_session(body: RecordSessionBody):
     conn = get_db()
     cur = conn.cursor()
 
+    # Insert into sessions table
     word_count = len(set(body.word_ids))
     started_at = (
         (now - timedelta(seconds=body.duration_seconds)).isoformat()
@@ -1151,12 +1123,14 @@ def record_session(body: RecordSessionBody):
     """, (body.session_type, started_at, now_str, word_count,
           body.correct_count, body.incorrect_count, body.duration_seconds))
 
+    # Insert unique (date, word_id) pairs — duplicates are silently ignored
     for wid in set(body.word_ids):
         cur.execute(
-            "INSERT INTO daily_words (date, word_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+            "INSERT OR IGNORE INTO daily_words (date, word_id) VALUES (?, ?)",
             (today_str, wid),
         )
 
+    # Count total unique words studied today
     cur.execute("SELECT COUNT(*) as cnt FROM daily_words WHERE date = ?", (today_str,))
     unique_words_today = cur.fetchone()["cnt"]
 
@@ -1171,6 +1145,7 @@ def record_session(body: RecordSessionBody):
 
     cur.execute("UPDATE user_progress SET total_xp = total_xp + ? WHERE id = 1", (XP_SESSION,))
 
+    # Update streak on first activity of a new day
     cur.execute(
         "SELECT current_streak, longest_streak, last_activity_date FROM user_progress WHERE id = 1"
     )
@@ -1208,15 +1183,18 @@ def record_session(body: RecordSessionBody):
 
 @app.get("/api/progress")
 def get_progress():
+    """Return full progress snapshot."""
     conn = get_db()
     cur = conn.cursor()
 
     cur.execute("SELECT * FROM user_progress WHERE id = 1")
     up = dict(cur.fetchone())
 
+    # Learned word count
     cur.execute("SELECT COUNT(*) as cnt FROM word_progress WHERE learned = 1")
     total_learned = cur.fetchone()["cnt"]
 
+    # Per-frequency learned breakdown
     cur.execute("SELECT LOWER(engWord) as eng, id FROM vocabulary")
     all_vocab = {r["eng"]: r["id"] for r in cur.fetchall()}
 
@@ -1233,9 +1211,11 @@ def get_progress():
         if wid in learned_ids:
             by_freq[lvl]["learned"] += 1
 
+    # Sessions total
     cur.execute("SELECT COALESCE(SUM(sessions_completed), 0) as cnt FROM daily_activity")
     total_sessions = cur.fetchone()["cnt"]
 
+    # Daily activity (last 30 days)
     cur.execute("""
         SELECT date, words_studied, sessions_completed, xp_earned
         FROM daily_activity
@@ -1244,6 +1224,7 @@ def get_progress():
     """)
     daily_activity = [dict(r) for r in cur.fetchall()]
 
+    # Today's activity
     today_str = date.today().isoformat()
     cur.execute("SELECT * FROM daily_activity WHERE date = ?", (today_str,))
     today_row = cur.fetchone()
@@ -1253,6 +1234,7 @@ def get_progress():
         else {"date": today_str, "words_studied": 0, "sessions_completed": 0, "xp_earned": 0}
     )
 
+    # Achievements
     cur.execute("SELECT id FROM achievements")
     unlocked_ids = {r["id"] for r in cur.fetchall()}
     all_achievements = [
@@ -1260,6 +1242,7 @@ def get_progress():
         for ach in ACHIEVEMENTS
     ]
 
+    # Level formula: level = 1 + floor(sqrt(xp / 50))
     xp = up["total_xp"]
     level = 1 + int(math.sqrt(xp / 50)) if xp > 0 else 1
     xp_for_level = 50 * (level - 1) ** 2
@@ -1301,12 +1284,10 @@ def patch_daily_goal(body: DailyGoalBody):
 
 @app.get("/api/progress/difficulty-tracking")
 def get_difficulty_tracking():
+    """Return enriched per-day history: study counts, accuracy, session time, ranked words."""
     conn = get_db()
     cur = conn.cursor()
-
-    _date_col = "started_at::date" if IS_POSTGRES else "DATE(started_at)"
-
-    cur.execute(f"""
+    cur.execute("""
         SELECT
             da.date,
             da.words_studied,
@@ -1327,13 +1308,13 @@ def get_difficulty_tracking():
             GROUP BY date
         ) dh ON dh.date = da.date
         LEFT JOIN (
-            SELECT {_date_col} AS date,
+            SELECT DATE(started_at) AS date,
                    SUM(COALESCE(duration_seconds, 0)) AS total_duration,
                    COUNT(*) AS session_count,
                    SUM(COALESCE(correct_count, 0)) AS total_correct,
                    SUM(COALESCE(incorrect_count, 0)) AS total_incorrect
             FROM sessions
-            GROUP BY {_date_col}
+            GROUP BY DATE(started_at)
         ) s ON s.date = da.date
         ORDER BY da.date DESC
         LIMIT 60
@@ -1345,6 +1326,7 @@ def get_difficulty_tracking():
 
 @app.get("/api/sessions")
 def get_sessions(limit: int = Query(50, ge=1, le=1000)):
+    """Return past sessions, most recent first."""
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
@@ -1361,6 +1343,7 @@ def get_sessions(limit: int = Query(50, ge=1, le=1000)):
 
 @app.get("/api/progress/weak-words")
 def get_weak_words():
+    """Return words with accuracy below 60% and at least 3 attempts."""
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
@@ -1384,13 +1367,14 @@ def get_weak_words():
 
 @app.get("/api/progress/trends")
 def get_trends(period: str = "weekly"):
+    """Return weekly or monthly aggregated activity."""
     conn = get_db()
     cur = conn.cursor()
     if period == "monthly":
-        group_expr = "to_char(date::date, 'YYYY-MM')" if IS_POSTGRES else "strftime('%Y-%m', date)"
+        group_expr = "strftime('%Y-%m', date)"
         limit = 6
     else:
-        group_expr = "to_char(date::date, 'IYYY-IW')" if IS_POSTGRES else "strftime('%Y-W%W', date)"
+        group_expr = "strftime('%Y-W%W', date)"
         limit = 12
     cur.execute(f"""
         SELECT
@@ -1403,18 +1387,20 @@ def get_trends(period: str = "weekly"):
                  THEN ROUND(CAST(SUM(s.correct_count) AS FLOAT) / (SUM(s.correct_count) + SUM(s.incorrect_count)) * 100)
                  ELSE NULL END AS accuracy_pct
         FROM daily_activity da
-        LEFT JOIN sessions s ON {group_expr if not IS_POSTGRES else "to_char(s.started_at::date, 'IYYY-IW')" if period != "monthly" else "to_char(s.started_at::date, 'YYYY-MM')"} = {group_expr}
+        LEFT JOIN sessions s ON DATE(s.started_at) = da.date
         GROUP BY {group_expr}
         ORDER BY period DESC
         LIMIT {limit}
     """)
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
-    return list(reversed(rows))
+    return list(reversed(rows))  # chronological order for charts
+
 
 
 @app.get("/api/stats/freq-difficulty")
 def get_stats_freq_difficulty():
+    """Word counts for every frequency-level × difficulty combination."""
     conn = get_db()
     cur  = conn.cursor()
     cur.execute("SELECT LOWER(engWord) AS eng, difficulty FROM vocabulary")
@@ -1445,6 +1431,7 @@ def get_stats_freq_difficulty():
 
 @app.get("/api/stats/performance")
 def get_stats_performance():
+    """Accuracy by difficulty & session type, best/worst words, coverage stats."""
     conn = get_db()
     cur = conn.cursor()
 
@@ -1498,18 +1485,18 @@ def get_stats_performance():
     """)
     worst_words = [dict(r) for r in cur.fetchall()]
 
-    cur.execute("SELECT COUNT(*) AS cnt FROM vocabulary WHERE examples IS NOT NULL AND examples != ''")
-    words_with_examples = cur.fetchone()["cnt"]
+    cur.execute("SELECT COUNT(*) FROM vocabulary WHERE examples IS NOT NULL AND examples != ''")
+    words_with_examples = cur.fetchone()[0]
 
-    cur.execute("SELECT COUNT(*) AS cnt FROM vocabulary WHERE image_url IS NOT NULL AND image_url != ''")
-    words_with_images = cur.fetchone()["cnt"]
+    cur.execute("SELECT COUNT(*) FROM vocabulary WHERE image_url IS NOT NULL AND image_url != ''")
+    words_with_images = cur.fetchone()[0]
 
     cur.execute("""
-        SELECT COUNT(*) AS cnt FROM vocabulary v
+        SELECT COUNT(*) FROM vocabulary v
         LEFT JOIN word_progress wp ON wp.word_id = v.id
         WHERE wp.attempt_count IS NULL OR wp.attempt_count = 0
     """)
-    words_never_attempted = cur.fetchone()["cnt"]
+    words_never_attempted = cur.fetchone()[0]
 
     conn.close()
     return {
@@ -1525,6 +1512,7 @@ def get_stats_performance():
 
 @app.get("/api/stats/difficulty-timeline")
 def get_difficulty_timeline():
+    """Daily snapshot of word counts per difficulty, derived from difficulty_history."""
     conn = get_db()
     cur = conn.cursor()
 
@@ -1543,6 +1531,8 @@ def get_difficulty_timeline():
     if not history:
         return []
 
+    # Words that appear in history started as NEW_WORD then got rated.
+    # Words that never appear in history keep their vocabulary difficulty the whole time.
     history_word_ids = {h["word_id"] for h in history}
 
     current = {
@@ -1568,6 +1558,7 @@ def get_difficulty_timeline():
 
 @app.get("/api/stats/velocity")
 def get_stats_velocity():
+    """Words learned per week for the last 12 weeks."""
     today = date.today()
     bins = []
     for i in range(11, -1, -1):
@@ -1599,19 +1590,18 @@ def get_stats_velocity():
 
 @app.get("/api/stats/habits")
 def get_stats_habits():
+    """Study patterns: day-of-week activity, total study time, session counts."""
     conn = get_db()
     cur  = conn.cursor()
 
-    _dow_col = "EXTRACT(DOW FROM started_at::timestamp)::integer" if IS_POSTGRES else "CAST(strftime('%w', started_at) AS INTEGER)"
-
-    cur.execute(f"""
+    cur.execute("""
         SELECT
-            {_dow_col} AS dow,
+            CAST(strftime('%w', started_at) AS INTEGER) AS dow,
             COUNT(*) AS session_count,
             COALESCE(SUM(correct_count + incorrect_count), 0) AS total_answers
         FROM sessions
         WHERE started_at IS NOT NULL
-        GROUP BY {_dow_col}
+        GROUP BY dow
     """)
     dow_map = {r["dow"]: dict(r) for r in cur.fetchall()}
     DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -1653,48 +1643,45 @@ def get_stats_habits():
 def init_roadmap_db():
     conn = get_db()
     cur = conn.cursor()
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS roadmap_groups (
-        id INTEGER PRIMARY KEY,
-        group_name TEXT UNIQUE NOT NULL,
-        word_count INTEGER DEFAULT 0
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS user_group_progress (
-        group_id INTEGER PRIMARY KEY,
-        is_completed INTEGER DEFAULT 0,
-        best_score REAL DEFAULT 0.0,
-        last_attempt_score REAL,
-        completed_at TEXT
-    )""")
-    cur.execute(f"""CREATE TABLE IF NOT EXISTS roadmap_missions (
-        id {_AI_PK},
-        mission_type TEXT NOT NULL,
-        related_group_ids TEXT NOT NULL,
-        word_pool_ids TEXT NOT NULL,
-        required_score REAL NOT NULL,
-        is_completed INTEGER DEFAULT 0,
-        attempts_count INTEGER DEFAULT 0,
-        best_score REAL DEFAULT 0.0,
-        created_at TEXT,
-        completed_at TEXT
-    )""")
-
-    cur.execute("SELECT COUNT(*) AS cnt FROM roadmap_groups")
-    existing = cur.fetchone()["cnt"]
-
+    cur.executescript("""
+        CREATE TABLE IF NOT EXISTS roadmap_groups (
+            id INTEGER PRIMARY KEY,
+            group_name TEXT UNIQUE NOT NULL,
+            word_count INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS user_group_progress (
+            group_id INTEGER PRIMARY KEY,
+            is_completed INTEGER DEFAULT 0,
+            best_score REAL DEFAULT 0.0,
+            last_attempt_score REAL,
+            completed_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS roadmap_missions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mission_type TEXT NOT NULL,
+            related_group_ids TEXT NOT NULL,
+            word_pool_ids TEXT NOT NULL,
+            required_score REAL NOT NULL,
+            is_completed INTEGER DEFAULT 0,
+            attempts_count INTEGER DEFAULT 0,
+            best_score REAL DEFAULT 0.0,
+            created_at TEXT,
+            completed_at TEXT
+        );
+    """)
+    existing = cur.execute("SELECT COUNT(*) FROM roadmap_groups").fetchone()[0]
     if existing == 0:
-        cur.execute(
+        groups_raw = cur.execute(
             "SELECT group_name, COUNT(*) as wc FROM vocabulary GROUP BY group_name"
-        )
-        groups_raw = cur.fetchall()
+        ).fetchall()
         sorted_groups = sorted(groups_raw, key=lambda r: natural_sort_key(r["group_name"]))
         for i, row in enumerate(sorted_groups, 1):
             cur.execute(
-                "INSERT INTO roadmap_groups (id, group_name, word_count) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+                "INSERT OR IGNORE INTO roadmap_groups (id, group_name, word_count) VALUES (?, ?, ?)",
                 (i, row["group_name"], row["wc"]),
             )
             cur.execute(
-                "INSERT INTO user_group_progress (group_id) VALUES (?) ON CONFLICT DO NOTHING", (i,)
+                "INSERT OR IGNORE INTO user_group_progress (group_id) VALUES (?)", (i,)
             )
     conn.commit()
     conn.close()
@@ -1724,33 +1711,27 @@ def _create_mission(conn, mission_type: str, group_ids: list) -> dict:
     word_ids = _build_word_pool(conn, group_ids)
     required = 0.95 if mission_type == "group" else 0.90
     now = datetime.now(timezone.utc).isoformat()
-
-    insert_sql = """INSERT INTO roadmap_missions
+    cur = conn.execute(
+        """INSERT INTO roadmap_missions
            (mission_type, related_group_ids, word_pool_ids, required_score, created_at)
-           VALUES (?, ?, ?, ?, ?)"""
-    insert_params = (mission_type, _json.dumps(sorted(group_ids)), _json.dumps(word_ids), required, now)
-
-    if IS_POSTGRES:
-        cur = conn.execute(insert_sql + " RETURNING id", insert_params)
-        new_id = cur.fetchone()["id"]
-    else:
-        cur = conn.execute(insert_sql, insert_params)
-        new_id = cur._c.lastrowid
-
+           VALUES (?, ?, ?, ?, ?)""",
+        (mission_type, _json.dumps(sorted(group_ids)), _json.dumps(word_ids), required, now),
+    )
     conn.commit()
     return _roadmap_row(
-        conn.execute("SELECT * FROM roadmap_missions WHERE id = ?", (new_id,)).fetchone()
+        conn.execute("SELECT * FROM roadmap_missions WHERE id = ?", (cur.lastrowid,)).fetchone()
     )
 
 
 def _resolve_current_mission(conn) -> Optional[dict]:
+    """Return or create the next mission the user should attempt."""
     row = conn.execute(
         "SELECT * FROM roadmap_missions WHERE is_completed = 0 ORDER BY id LIMIT 1"
     ).fetchone()
     if row:
         return _roadmap_row(row)
 
-    total = conn.execute("SELECT COUNT(*) AS cnt FROM roadmap_groups").fetchone()["cnt"]
+    total = conn.execute("SELECT COUNT(*) FROM roadmap_groups").fetchone()[0]
     if total == 0:
         return None
 
@@ -1928,6 +1909,7 @@ def submit_mission_attempt(mission_id: int, body: MissionAttemptBody):
 
 @app.post("/api/roadmap/restart")
 def restart_roadmap():
+    """Reset all roadmap progress and re-sync groups from current vocabulary."""
     conn = get_db()
     conn.execute("DELETE FROM roadmap_missions")
     conn.execute("DELETE FROM user_group_progress")
@@ -1948,6 +1930,6 @@ def restart_roadmap():
 
     conn.commit()
     first_mission = _resolve_current_mission(conn)
-    total = conn.execute("SELECT COUNT(*) AS cnt FROM roadmap_groups").fetchone()["cnt"]
+    total = conn.execute("SELECT COUNT(*) FROM roadmap_groups").fetchone()[0]
     conn.close()
     return {"groups_total": total, "first_mission": first_mission}
