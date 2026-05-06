@@ -252,35 +252,28 @@ function Stage4({ word, answered, onAnswer }) {
     const handler = (e) => {
       if (/^[a-zA-Z]$/.test(e.key)) {
         const letter = e.key.toLowerCase()
-        setBank((prevBank) => {
-          const idx = prevBank.findIndex((l) => l.letter === letter)
-          if (idx === -1) return prevBank
-          const letterObj = prevBank[idx]
-          setBuiltLetters((prev) => [...prev, letterObj])
-          return prevBank.filter((_, i) => i !== idx)
-        })
+        const idx = bank.findIndex((l) => l.letter === letter)
+        if (idx === -1) return
+        const letterObj = bank[idx]
+        setBuiltLetters((prev) => [...prev, letterObj])
+        setBank((prev) => prev.filter((_, i) => i !== idx))
       } else if (e.key === 'Backspace') {
         e.preventDefault()
-        setBuiltLetters((prev) => {
-          if (prev.length === 0) return prev
-          const last = prev[prev.length - 1]
-          setBank((b) => [...b, last])
-          return prev.slice(0, -1)
-        })
+        if (builtLetters.length === 0) return
+        const last = builtLetters[builtLetters.length - 1]
+        setBuiltLetters((prev) => prev.slice(0, -1))
+        setBank((prev) => [...prev, last])
       } else if (e.key === 'Enter') {
-        setBuiltLetters((prev) => {
-          if (prev.length === 0) return prev
-          const built = prev.map((l) => l.letter).join('')
-          const target = word.engWord.toLowerCase().replace(/[\s-]+/g, '')
-          setSubmitted(true)
-          onAnswer(built === target, built)
-          return prev
-        })
+        if (builtLetters.length === 0) return
+        const built = builtLetters.map((l) => l.letter).join('')
+        const target = word.engWord.toLowerCase().replace(/[\s-]+/g, '')
+        setSubmitted(true)
+        onAnswer(built === target, built)
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [submitted, word.engWord, onAnswer])
+  }, [submitted, word.engWord, onAnswer, builtLetters, bank])
 
   const addLetter = (letterObj) => {
     if (submitted) return
