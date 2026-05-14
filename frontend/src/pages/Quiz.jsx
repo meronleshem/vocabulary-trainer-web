@@ -4,6 +4,7 @@ import { getQuiz, getBooks, patchDifficulty, recordSession, recordAnswer } from 
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
 import DifficultyPicker from '../components/DifficultyPicker'
+import HebWord from '../components/HebWord'
 
 const RESULT_COLORS = {
   correct: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
@@ -289,7 +290,7 @@ export default function Quiz() {
                 }
                 <div className="min-w-0">
                   <p className="text-slate-200 text-sm font-medium">{h.word.engWord}</p>
-                  <p className="text-slate-400 text-sm heb">{h.word.hebWord}</p>
+                  <p className="text-slate-400 text-sm heb"><HebWord text={h.word.hebWord} /></p>
                   {!h.correct && (
                     <p className="text-red-400 text-xs mt-0.5">You answered: {h.chosen}</p>
                   )}

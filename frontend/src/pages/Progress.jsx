@@ -12,6 +12,7 @@ import {
   getWeakWords, getTrends, getSessions,
 } from '../api/client'
 import DifficultyBadge from '../components/DifficultyBadge'
+import HebWord from '../components/HebWord'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -417,7 +418,7 @@ function WordsTab() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-slate-200 font-medium">{w.engWord}</span>
-                <span className="text-slate-400 heb text-sm">{w.hebWord}</span>
+                <span className="text-slate-400 heb text-sm"><HebWord text={w.hebWord} /></span>
               </div>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-slate-600 text-xs">{w.correct_count}/{w.attempt_count} correct</span>

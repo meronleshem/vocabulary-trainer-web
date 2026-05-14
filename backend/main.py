@@ -94,6 +94,16 @@ def init_progress_db():
     conn = get_db()
     cur = conn.cursor()
     cur.executescript("""
+        CREATE TABLE IF NOT EXISTS vocabulary (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            engWord    TEXT NOT NULL,
+            hebWord    TEXT NOT NULL,
+            examples   TEXT DEFAULT '',
+            difficulty TEXT NOT NULL DEFAULT 'NEW_WORD',
+            group_name TEXT DEFAULT '',
+            image_url  TEXT DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS user_progress (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             total_xp INTEGER NOT NULL DEFAULT 0,

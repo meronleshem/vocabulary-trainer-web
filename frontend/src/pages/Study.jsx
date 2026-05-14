@@ -8,6 +8,7 @@ import { getStudyWords, patchDifficulty, getBooks, recordAnswer, recordSession }
 import DifficultyBadge, { DIFF_LABELS } from '../components/DifficultyBadge'
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
+import HebWord from '../components/HebWord'
 
 const DIFF_BUTTONS = [
   { key: 'EASY', label: 'Easy', cls: 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/20' },
@@ -332,7 +333,7 @@ export default function Study() {
               </>
             )}
             <p className="text-slate-400 text-sm">{current.engWord}</p>
-            <p className="text-2xl font-bold text-slate-100 heb">{current.hebWord}</p>
+            <p className="text-2xl font-bold text-slate-100 heb"><HebWord text={current.hebWord} /></p>
             {settings.showExamples && current.examples && (
               <div className="mt-2 max-w-md text-left">
                 {current.examples.split('\n').slice(0, 2).map((ex, i) => (

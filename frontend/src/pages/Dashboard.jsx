@@ -8,6 +8,7 @@ import { BookOpen, Brain, Trophy, Layers, ArrowRight, Map, Play, RefreshCw, Zap 
 import { getStats, getRoadmapState, getCurrentMission } from '../api/client'
 import StatsCard from '../components/StatsCard'
 import DifficultyBadge from '../components/DifficultyBadge'
+import HebWord from '../components/HebWord'
 
 const MISSION_TYPE_META = {
   group:        { label: 'Group Mission',     color: 'text-primary-light', bg: 'bg-primary/15'   },
@@ -348,7 +349,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-3 min-w-0">
                 <span className="font-medium text-slate-200 truncate">{word.engWord}</span>
                 <span className="text-slate-500">→</span>
-                <span className="text-slate-400 heb truncate">{word.hebWord}</span>
+                <span className="text-slate-400 heb truncate"><HebWord text={word.hebWord} /></span>
               </div>
               <div className="flex items-center gap-2 ml-3 flex-shrink-0">
                 <span className="text-xs text-slate-600 hidden sm:block">

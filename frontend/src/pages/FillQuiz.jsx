@@ -4,6 +4,7 @@ import { getFillQuiz, getBooks, patchDifficulty, recordSession, recordAnswer } f
 import GroupPicker from '../components/GroupPicker'
 import FrequencyPicker from '../components/FrequencyPicker'
 import DifficultyPicker from '../components/DifficultyPicker'
+import HebWord from '../components/HebWord'
 
 const RESULT_COLORS = {
   correct: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
@@ -356,8 +357,8 @@ export default function FillQuiz() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {selected === q.correct
-                ? <><CheckCircle size={18} className="text-emerald-400" /><span className="text-emerald-400 font-medium">Correct! <span className="heb text-slate-400 font-normal">({q.word.hebWord})</span></span></>
-                : <><XCircle    size={18} className="text-red-400"     /><span className="text-red-400 font-medium">The answer was: <span className="font-bold">{q.correct}</span> <span className="heb text-slate-400 font-normal">({q.word.hebWord})</span></span></>
+                ? <><CheckCircle size={18} className="text-emerald-400" /><span className="text-emerald-400 font-medium">Correct! <span className="heb text-slate-400 font-normal">(<HebWord text={q.word.hebWord} />)</span></span></>
+                : <><XCircle    size={18} className="text-red-400"     /><span className="text-red-400 font-medium">The answer was: <span className="font-bold">{q.correct}</span> <span className="heb text-slate-400 font-normal">(<HebWord text={q.word.hebWord} />)</span></span></>
               }
             </div>
             <button className="btn-primary flex items-center gap-2" onClick={goNext}>

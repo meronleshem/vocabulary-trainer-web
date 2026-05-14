@@ -8,6 +8,7 @@ import WordModal from '../components/WordModal'
 import QuickAddModal from '../components/QuickAddModal'
 import ImportModal from '../components/ImportModal'
 import { GroupPickerDropdown } from '../components/GroupPicker'
+import HebWord from '../components/HebWord'
 
 const DIFFICULTIES = ['', 'NEW_WORD', 'EASY', 'MEDIUM', 'HARD']
 
@@ -276,7 +277,7 @@ export default function Browse() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-300 heb">{word.hebWord}</td>
+                    <td className="px-4 py-3 text-slate-300 heb"><HebWord text={word.hebWord} /></td>
                     <td className="px-4 py-3">
                       <select
                         className="bg-transparent text-xs border-0 outline-none cursor-pointer"

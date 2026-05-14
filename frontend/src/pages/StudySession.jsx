@@ -9,6 +9,7 @@ import { getImageUrl } from '../utils/image'
 import { GroupPickerDropdown } from '../components/GroupPicker'
 import DifficultyBadge from '../components/DifficultyBadge'
 import FrequencyPicker from '../components/FrequencyPicker'
+import HebWord from '../components/HebWord'
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ function Stage1({ word, answered, selectedOption, onAnswer }) {
           className="mx-auto w-44 h-32 object-contain bg-dark-700 rounded-lg border border-dark-400"
           onError={(e) => { e.target.src = DEFAULT_IMG }}
         />
-        <p className="text-3xl font-bold text-slate-100 heb">{word.hebWord}</p>
+        <p className="text-3xl font-bold text-slate-100 heb"><HebWord text={word.hebWord} /></p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -177,7 +178,7 @@ function Stage2({ word, answered, selectedOption, onAnswer }) {
               answered, opt === word.hebWord, opt === selectedOption
             )}`}
           >
-            <span className="text-slate-500 text-xs mr-1.5 not-heb">{i + 1}.</span><span className="heb">{opt}</span>
+            <span className="text-slate-500 text-xs mr-1.5 not-heb">{i + 1}.</span><span className="heb"><HebWord text={opt} /></span>
           </button>
         ))}
       </div>
@@ -224,7 +225,7 @@ function Stage3({ word, answered, selectedOption, onAnswer }) {
               className="w-full h-24 object-contain bg-dark-700 rounded-lg border border-dark-400/50"
               onError={(e) => { e.target.src = DEFAULT_IMG }}
             />
-            <span className="heb font-medium text-center text-sm">{opt.hebWord}</span>
+            <span className="heb font-medium text-center text-sm"><HebWord text={opt.hebWord} /></span>
           </button>
         ))}
       </div>
@@ -321,7 +322,7 @@ function Stage4({ word, answered, onAnswer }) {
           className="mx-auto w-44 h-32 object-contain bg-dark-700 rounded-lg border border-dark-400"
           onError={(e) => { e.target.src = DEFAULT_IMG }}
         />
-        <p className="text-3xl font-bold text-slate-100 heb">{word.hebWord}</p>
+        <p className="text-3xl font-bold text-slate-100 heb"><HebWord text={word.hebWord} /></p>
       </div>
 
       {/* Built word display */}
@@ -587,7 +588,7 @@ function WordSelector({ onStart }) {
                 <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
                   <span className="text-slate-200 font-medium">{word.engWord}</span>
                   <span className="text-slate-600 text-xs">·</span>
-                  <span className="text-slate-400 heb text-sm">{word.hebWord}</span>
+                  <span className="text-slate-400 heb text-sm"><HebWord text={word.hebWord} /></span>
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -671,7 +672,7 @@ function SessionResults({ score, mistakes, totalWords, onRetry, onNew }) {
                       Stage {m.stage}
                     </span>
                   </div>
-                  <p className="text-slate-400 text-sm heb">{m.word.hebWord}</p>
+                  <p className="text-slate-400 text-sm heb"><HebWord text={m.word.hebWord} /></p>
                 </div>
                 {m.word.image_url && (
                   <img
