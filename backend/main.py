@@ -276,7 +276,10 @@ def _scrape_morfix(eng_word: str) -> dict:
     for ul in soup.find_all("ul", class_="Translation_ulFooter_enTohe"):
         items = ul.find_all("li")[:3]
         if items:
-            examples = "\n".join(li.get_text(strip=True) for li in items)
+            examples = "\n".join(
+                re.sub(r'\s+', ' ', li.get_text(separator=' ')).strip()
+                for li in items
+            )
             break
 
     return {"hebWord": heb_word, "examples": examples}
