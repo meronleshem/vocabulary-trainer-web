@@ -27,19 +27,9 @@ const DIFF_BUTTONS = [
 
 function speakSentence(sentence) {
   window.speechSynthesis.cancel()
-  const parts = sentence.split('____')
-  const speakPart = (index) => {
-    if (index >= parts.length) return
-    const utt = new SpeechSynthesisUtterance(parts[index].trim())
-    utt.rate = 0.9
-    utt.onend = () => {
-      if (index < parts.length - 1) {
-        setTimeout(() => speakPart(index + 1), 50)
-      }
-    }
-    window.speechSynthesis.speak(utt)
-  }
-  speakPart(0)
+  const utt = new SpeechSynthesisUtterance(sentence.replace(/____/g, '...'))
+  utt.rate = 0.9
+  window.speechSynthesis.speak(utt)
 }
 
 // Highlight ____ in the sentence
